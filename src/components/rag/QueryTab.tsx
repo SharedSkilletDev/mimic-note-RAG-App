@@ -31,9 +31,6 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
     'summarizer:latest',
     'nomic-embed-text:latest'
   ]);
-  const [systemPrompt, setSystemPrompt] = useState(`You are a helpful AI assistant specialized in analyzing clinical data from MIMIC IV dataset. 
-You have access to discharge summaries and clinical notes. Please provide accurate, helpful responses based on the provided context.
-Always cite your sources when referencing specific patient data.`);
   
   const { toast } = useToast();
   const { messages, isStreaming, sendMessage, clearConversation } = useChat();
@@ -69,8 +66,6 @@ Always cite your sources when referencing specific patient data.`);
         setSubjectId={setSubjectId}
         dateRange={dateRange}
         setDateRange={setDateRange}
-        systemPrompt={systemPrompt}
-        setSystemPrompt={setSystemPrompt}
         availableSubjectIds={availableSubjectIds}
         availableModels={availableModels}
         onRefreshModels={refreshModels}

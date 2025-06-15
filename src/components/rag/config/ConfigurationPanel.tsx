@@ -3,7 +3,6 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Clock, User, RefreshCw } from "lucide-react";
 
@@ -14,8 +13,6 @@ interface ConfigurationPanelProps {
   setSubjectId: (id: string) => void;
   dateRange: string;
   setDateRange: (range: string) => void;
-  systemPrompt: string;
-  setSystemPrompt: (prompt: string) => void;
   availableSubjectIds: number[];
   availableModels: string[];
   onRefreshModels: () => void;
@@ -28,8 +25,6 @@ export const ConfigurationPanel = ({
   setSubjectId,
   dateRange,
   setDateRange,
-  systemPrompt,
-  setSystemPrompt,
   availableSubjectIds,
   availableModels,
   onRefreshModels
@@ -107,16 +102,6 @@ export const ConfigurationPanel = ({
               onChange={(e) => setDateRange(e.target.value)}
             />
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">System Prompt</label>
-          <Textarea
-            placeholder="Configure the system prompt for the AI assistant..."
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            rows={3}
-          />
         </div>
       </CardContent>
     </Card>
