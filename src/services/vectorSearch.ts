@@ -23,11 +23,11 @@ export class VectorSearchService {
     
     this.isLoading = true;
     try {
-      console.log('Initializing embedding model...');
+      console.log('🚀 Initializing embedding model...');
       this.embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-      console.log('Embedding model initialized successfully');
+      console.log('✅ Embedding model initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize embedding model:', error);
+      console.error('❌ Failed to initialize embedding model:', error);
       throw error;
     } finally {
       this.isLoading = false;
@@ -36,25 +36,27 @@ export class VectorSearchService {
 
   async vectorizeData(records: any[], onProgress?: (progress: number) => void): Promise<VectorizedRecord[]> {
     console.log('=== VECTORIZATION DEBUG START ===');
-    console.log('Input records:', records.length);
-    console.log('Sample input record:', records[0]);
+    console.log('📊 Input records:', records.length);
+    console.log('📝 Sample input record:', records[0]);
     
     if (!this.embedder) {
-      console.log('Embedder not initialized, initializing now...');
+      console.log('🔄 Embedder not initialized, initializing now...');
       await this.initialize();
+      
+      if (!this.embedder) {
+        console.error('❌ Failed to initialize embedder');
+        throw new Error('Failed to initialize embedding model');
+      }
+      console.log('✅ Embedder initialized successfully');
     }
 
     // Convert and validate the input data with better error handling
     const validRecords: MimicRecord[] = [];
     
+    console.log('🔍 Starting record validation...');
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
-      console.log(`Processing record ${i + 1}/${records.length}:`, {
-        note_id: record.note_id,
-        has_cleaned_text: !!record.cleaned_text,
-        text_length: record.cleaned_text ? record.cleaned_text.length : 0
-      });
-
+      
       try {
         // Handle the MIMIC structure more robustly
         let mimicRecord: MimicRecord;
@@ -68,27 +70,23 @@ export class VectorSearchService {
             cleaned_text: String(record.cleaned_text).trim()
           };
         } else {
-          console.warn(`Record ${i + 1} missing required fields:`, {
-            has_note_id: !!record.note_id,
-            has_cleaned_text: !!record.cleaned_text
-          });
+          console.warn(`⚠️ Record ${i + 1} missing required fields`);
           continue;
         }
 
         // More thorough text validation
         if (!mimicRecord.cleaned_text || mimicRecord.cleaned_text.length < 10) {
-          console.warn(`Record ${mimicRecord.note_id} has insufficient text content (${mimicRecord.cleaned_text.length} chars)`);
+          console.warn(`⚠️ Record ${mimicRecord.note_id} has insufficient text content`);
           continue;
         }
 
         validRecords.push(mimicRecord);
-        console.log(`✓ Record ${mimicRecord.note_id} validated`);
       } catch (error) {
-        console.error(`Error processing record ${i + 1}:`, error);
+        console.error(`❌ Error processing record ${i + 1}:`, error);
       }
     }
 
-    console.log(`Validation complete: ${validRecords.length} valid records out of ${records.length} total`);
+    console.log(`✅ Validation complete: ${validRecords.length} valid records out of ${records.length} total`);
 
     if (validRecords.length === 0) {
       console.error('❌ No valid records found to vectorize');
@@ -98,9 +96,11 @@ export class VectorSearchService {
     const vectorizedRecords: VectorizedRecord[] = [];
     const startTime = Date.now();
     
+    console.log('🔮 Starting embedding generation...');
+    
     for (let i = 0; i < validRecords.length; i++) {
       const record = validRecords[i];
-      console.log(`\n--- Vectorizing ${i + 1}/${validRecords.length}: ${record.note_id} ---`);
+      console.log(`\n--- 🔮 Vectorizing ${i + 1}/${validRecords.length}: ${record.note_id} ---`);
       
       try {
         // Clean and prepare text for embedding
@@ -112,7 +112,7 @@ export class VectorSearchService {
         // Truncate to a reasonable length for the model
         if (text.length > 512) {
           text = text.substring(0, 512);
-          console.log(`Text truncated to 512 characters`);
+          console.log(`✂️ Text truncated to 512 characters`);
         }
 
         if (text.length === 0) {
@@ -120,44 +120,63 @@ export class VectorSearchService {
           continue;
         }
 
-        console.log(`Generating embedding for text (${text.length} chars)...`);
+        console.log(`🔮 Generating embedding for text (${text.length} chars)...`);
+        console.log(`📝 Text preview: "${text.substring(0, 100)}..."`);
+        
         const embeddingStart = Date.now();
         
-        const embedding = await this.embedder(text, { 
-          pooling: 'mean', 
-          normalize: true 
-        });
-        
-        const embeddingTime = Date.now() - embeddingStart;
-        console.log(`Embedding generated in ${embeddingTime}ms`);
-        
-        // Convert tensor data to number array
-        let embeddingArray: number[];
-        if (embedding.data) {
-          embeddingArray = Array.from(embedding.data as Float32Array);
-        } else if (Array.isArray(embedding)) {
-          embeddingArray = embedding;
-        } else {
-          throw new Error('Unexpected embedding format');
-        }
-        
-        console.log(`✓ Embedding array length: ${embeddingArray.length}`);
-        console.log(`Sample embedding values: [${embeddingArray.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]`);
-        
-        const vectorizedRecord = {
-          ...record,
-          embedding: embeddingArray
-        };
-        
-        vectorizedRecords.push(vectorizedRecord);
-        console.log(`✓ Successfully vectorized record ${record.note_id}`);
+        try {
+          console.log('🔄 Calling embedder...');
+          const embedding = await this.embedder(text, { 
+            pooling: 'mean', 
+            normalize: true 
+          });
+          
+          const embeddingTime = Date.now() - embeddingStart;
+          console.log(`⚡ Embedding generated in ${embeddingTime}ms`);
+          console.log('📊 Embedding result type:', typeof embedding);
+          console.log('📊 Embedding result keys:', Object.keys(embedding || {}));
+          
+          // Convert tensor data to number array
+          let embeddingArray: number[];
+          if (embedding && embedding.data) {
+            console.log('📊 Using embedding.data');
+            embeddingArray = Array.from(embedding.data as Float32Array);
+          } else if (Array.isArray(embedding)) {
+            console.log('📊 Using embedding as array');
+            embeddingArray = embedding;
+          } else {
+            console.error('❌ Unexpected embedding format:', embedding);
+            throw new Error('Unexpected embedding format');
+          }
+          
+          console.log(`✅ Embedding array length: ${embeddingArray.length}`);
+          console.log(`🔢 Sample embedding values: [${embeddingArray.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]`);
+          
+          const vectorizedRecord = {
+            ...record,
+            embedding: embeddingArray
+          };
+          
+          vectorizedRecords.push(vectorizedRecord);
+          console.log(`✅ Successfully vectorized record ${record.note_id}`);
 
-        // Update progress
-        const progress = ((i + 1) / validRecords.length) * 100;
-        console.log(`Progress: ${progress.toFixed(1)}%`);
-        
-        if (onProgress) {
-          onProgress(progress);
+          // Update progress
+          const progress = ((i + 1) / validRecords.length) * 100;
+          console.log(`📈 Progress: ${progress.toFixed(1)}%`);
+          
+          if (onProgress) {
+            onProgress(progress);
+          }
+          
+        } catch (embeddingError) {
+          console.error(`❌ Embedding generation failed for record ${record.note_id}:`, embeddingError);
+          console.error('📊 Embedder state:', {
+            embedderExists: !!this.embedder,
+            textLength: text.length,
+            textPreview: text.substring(0, 50)
+          });
+          // Continue with other records instead of failing completely
         }
       } catch (error) {
         console.error(`❌ Failed to vectorize record ${record.note_id}:`, error);
@@ -166,37 +185,42 @@ export class VectorSearchService {
     }
 
     const totalTime = Date.now() - startTime;
-    console.log(`\n=== VECTORIZATION COMPLETE ===`);
-    console.log(`Total time: ${totalTime}ms`);
-    console.log(`Successfully vectorized: ${vectorizedRecords.length}/${validRecords.length} records`);
-    console.log(`Average time per record: ${(totalTime / vectorizedRecords.length).toFixed(2)}ms`);
+    console.log(`\n=== 🎉 VECTORIZATION COMPLETE ===`);
+    console.log(`⏱️ Total time: ${totalTime}ms`);
+    console.log(`✅ Successfully vectorized: ${vectorizedRecords.length}/${validRecords.length} records`);
+    
+    if (vectorizedRecords.length > 0) {
+      console.log(`⚡ Average time per record: ${(totalTime / vectorizedRecords.length).toFixed(2)}ms`);
+    }
     
     this.vectorizedRecords = vectorizedRecords;
-    console.log(`Vector store now contains ${this.vectorizedRecords.length} records`);
+    console.log(`💾 Vector store now contains ${this.vectorizedRecords.length} records`);
     
     return vectorizedRecords;
   }
 
   async searchSimilar(query: string, topK = 5): Promise<VectorizedRecord[]> {
-    console.log(`\n=== VECTOR SEARCH ===`);
-    console.log(`Query: "${query}"`);
-    console.log(`Available records: ${this.vectorizedRecords.length}`);
+    console.log(`\n=== 🔍 VECTOR SEARCH ===`);
+    console.log(`❓ Query: "${query}"`);
+    console.log(`📊 Available records: ${this.vectorizedRecords.length}`);
     
     if (!this.embedder || this.vectorizedRecords.length === 0) {
       throw new Error('Vector search not initialized or no data vectorized');
     }
 
     // Get query embedding
-    console.log('Generating query embedding...');
+    console.log('🔮 Generating query embedding...');
     const queryEmbedding = await this.embedder(query, { pooling: 'mean', normalize: true });
     const queryVector: number[] = Array.from(queryEmbedding.data as Float32Array);
-    console.log(`Query embedding generated (length: ${queryVector.length})`);
+    console.log(`✅ Query embedding generated (length: ${queryVector.length})`);
 
     // Calculate cosine similarity with all records
-    console.log('Calculating similarities...');
+    console.log('📊 Calculating similarities...');
     const similarities = this.vectorizedRecords.map((record, index) => {
       const similarity = this.cosineSimilarity(queryVector, record.embedding);
-      console.log(`Record ${index + 1} (${record.note_id}): similarity = ${similarity.toFixed(4)}`);
+      if (index < 3) { // Log first 3 for debugging
+        console.log(`📊 Record ${index + 1} (${record.note_id}): similarity = ${similarity.toFixed(4)}`);
+      }
       return {
         record,
         similarity
@@ -207,7 +231,7 @@ export class VectorSearchService {
     similarities.sort((a, b) => b.similarity - a.similarity);
     const results = similarities.slice(0, topK).map(item => item.record);
     
-    console.log(`\nTop ${topK} results:`);
+    console.log(`\n🏆 Top ${topK} results:`);
     similarities.slice(0, topK).forEach((item, index) => {
       console.log(`${index + 1}. ${item.record.note_id} (similarity: ${item.similarity.toFixed(4)})`);
     });
@@ -217,7 +241,7 @@ export class VectorSearchService {
 
   private cosineSimilarity(vecA: number[], vecB: number[]): number {
     if (vecA.length !== vecB.length) {
-      console.error(`Vector length mismatch: ${vecA.length} vs ${vecB.length}`);
+      console.error(`❌ Vector length mismatch: ${vecA.length} vs ${vecB.length}`);
       return 0;
     }
     
@@ -237,7 +261,7 @@ export class VectorSearchService {
   clearData() {
     const previousCount = this.vectorizedRecords.length;
     this.vectorizedRecords = [];
-    console.log(`Vector store cleared (was ${previousCount} records)`);
+    console.log(`🧹 Vector store cleared (was ${previousCount} records)`);
   }
 }
 
