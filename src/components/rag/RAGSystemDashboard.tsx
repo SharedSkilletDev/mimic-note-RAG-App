@@ -32,26 +32,38 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
 
   return (
     <div className="flex-1 p-6">
-      {/* Enhanced Header Section with UAMS Logo */}
-      <div className="mb-8 bg-gradient-to-r from-red-50 to-red-100 rounded-lg p-8 border border-red-200">
-        <div className="flex flex-col md:flex-row items-center gap-6">
-          <div className="flex-shrink-0">
-            <img 
-              src="/lovable-uploads/e4cb6e4d-fe11-48fa-b2a0-5fac96251bb3.png" 
-              alt="UAMS Logo" 
-              className="h-20 w-auto object-contain"
-            />
-          </div>
-          <div className="text-center md:text-left">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              Local RAG System for MIMIC IV Data
-            </h1>
-            <p className="text-lg text-gray-700 mb-2">
-              University of Arkansas for Medical Sciences
-            </p>
-            <p className="text-gray-600">
-              Build and query your local RAG system with clinical discharge notes while maintaining HIPAA compliance
-            </p>
+      {/* Professional Header Section with Enhanced UAMS Logo */}
+      <div className="mb-8 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-red-600 to-red-700 p-1">
+          <div className="bg-white rounded-lg">
+            <div className="flex flex-col lg:flex-row items-center gap-8 p-8">
+              <div className="flex-shrink-0">
+                <div className="bg-white rounded-xl p-4 shadow-md border border-gray-100">
+                  <img 
+                    src="/lovable-uploads/e4cb6e4d-fe11-48fa-b2a0-5fac96251bb3.png" 
+                    alt="UAMS Logo" 
+                    className="h-16 w-auto object-contain"
+                  />
+                </div>
+              </div>
+              <div className="text-center lg:text-left flex-1">
+                <div className="mb-3">
+                  <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
+                    Local RAG System for MIMIC IV Data
+                  </h1>
+                </div>
+                <div className="mb-3">
+                  <p className="text-xl font-semibold text-red-700">
+                    University of Arkansas for Medical Sciences
+                  </p>
+                </div>
+                <div className="max-w-2xl">
+                  <p className="text-gray-600 leading-relaxed">
+                    Build and query your local RAG system with clinical discharge notes while maintaining HIPAA compliance and ensuring data privacy
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
