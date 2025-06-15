@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useVectorStore } from './useVectorStore';
@@ -23,21 +22,23 @@ export const useChat = () => {
   } = useVectorStore();
 
   const generateResponse = async (query: string, similarRecords: any[]) => {
-    // Create context from similar records with similarity scores
+    // Create context from similar records with similarity scores - NO TRUNCATION
     const context = similarRecords.map((record, index) => 
-      `[Similarity: ${(record.similarity_score * 100).toFixed(1)}%] Subject ${record.subject_id} (${record.charttime}): ${record.cleaned_text.substring(0, 500)}...`
+      `[Similarity: ${(record.similarity_score * 100).toFixed(1)}%] Subject ${record.subject_id} (${record.charttime}): ${record.cleaned_text}`
     ).join('\n\n');
 
     // Generate more informative responses based on context and similarity scores
     const topSimilarity = similarRecords[0]?.similarity_score || 0;
+    const lowestSimilarity = similarRecords[similarRecords.length - 1]?.similarity_score || 0;
+    
     const responses = [
-      `Based on the clinical records, I found ${similarRecords.length} relevant cases related to your query: "${query}". The most similar case has a ${(topSimilarity * 100).toFixed(1)}% similarity match.\n\n${context.substring(0, 1200)}...`,
+      `Based on the clinical records, I found ${similarRecords.length} relevant cases related to your query: "${query}". The most similar case has a ${(topSimilarity * 100).toFixed(1)}% similarity match.\n\n${context}`,
       
-      `Analysis of ${similarRecords.length} clinically similar cases:\n\nTop match (${(topSimilarity * 100).toFixed(1)}% similarity): Subject ${similarRecords[0]?.subject_id}\n\n${context.substring(0, 1000)}...\n\nWould you like me to focus on specific clinical aspects or patterns?`,
+      `Analysis of ${similarRecords.length} clinically similar cases:\n\nTop match (${(topSimilarity * 100).toFixed(1)}% similarity): Subject ${similarRecords[0]?.subject_id}\n\n${context}\n\nWould you like me to focus on specific clinical aspects or patterns?`,
       
-      `From the MIMIC IV data, I've identified ${similarRecords.length} relevant patient records with similarity scores ranging from ${(topSimilarity * 100).toFixed(1)}% to ${((similarRecords[similarRecords.length - 1]?.similarity_score || 0) * 100).toFixed(1)}%.\n\nKey clinical findings:\n${context.substring(0, 1000)}...`,
+      `From the MIMIC IV data, I've identified ${similarRecords.length} relevant patient records with similarity scores ranging from ${(topSimilarity * 100).toFixed(1)}% to ${(lowestSimilarity * 100).toFixed(1)}%.\n\nKey clinical findings:\n${context}`,
       
-      `Vector search results for "${query}":\n\n${similarRecords.length} matching clinical records found. The analysis shows patterns across multiple patients with the highest similarity being ${(topSimilarity * 100).toFixed(1)}%.\n\n${context.substring(0, 1200)}...`
+      `Vector search results for "${query}":\n\n${similarRecords.length} matching clinical records found. The analysis shows patterns across multiple patients with the highest similarity being ${(topSimilarity * 100).toFixed(1)}%.\n\n${context}`
     ];
     
     return responses[Math.floor(Math.random() * responses.length)];
