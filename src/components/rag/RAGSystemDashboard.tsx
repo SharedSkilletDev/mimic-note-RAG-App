@@ -32,11 +32,28 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
 
   return (
     <div className="flex-1 p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Local RAG System for MIMIC IV Data</h1>
-        <p className="text-muted-foreground mt-2">
-          Build and query your local RAG system with clinical discharge notes while maintaining HIPAA compliance
-        </p>
+      {/* Enhanced Header Section with UAMS Logo */}
+      <div className="mb-8 bg-gradient-to-r from-red-50 to-red-100 rounded-lg p-8 border border-red-200">
+        <div className="flex flex-col md:flex-row items-center gap-6">
+          <div className="flex-shrink-0">
+            <img 
+              src="/lovable-uploads/e4cb6e4d-fe11-48fa-b2a0-5fac96251bb3.png" 
+              alt="UAMS Logo" 
+              className="h-20 w-auto object-contain"
+            />
+          </div>
+          <div className="text-center md:text-left">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              Local RAG System for MIMIC IV Data
+            </h1>
+            <p className="text-lg text-gray-700 mb-2">
+              University of Arkansas for Medical Sciences
+            </p>
+            <p className="text-gray-600">
+              Build and query your local RAG system with clinical discharge notes while maintaining HIPAA compliance
+            </p>
+          </div>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
