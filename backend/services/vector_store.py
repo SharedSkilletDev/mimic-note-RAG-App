@@ -1,25 +1,26 @@
-
 import faiss
 import numpy as np
 import pickle
 import os
 import logging
 from typing import List, Dict, Any, Optional
-import json
+from models import VectorSearchResult
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
-    def __init__(self, store_path: str = "vector_store"):
-        self.store_path = store_path
+    def __init__(self, 
+                 index_path: str = "faiss_index.bin",
+                 metadata_path: str = "metadata.pkl",
+                 dimension: int = 768):  # Common dimension for nomic-embed-text
+        self.index_path = index_path
+        self.metadata_path = metadata_path
+        self.dimension = dimension
         self.index = None
         self.metadata = {}
-        self.dimension = 768  # Nomic embedding dimension
-        self.index_file = os.path.join(store_path, "faiss_index.idx")
-        self.metadata_file = os.path.join(store_path, "metadata.pkl")
-        
-        # Create store directory
-        os.makedirs(store_path, exist_ok=True)
+        self.id_to_index = {}
+        self.index_to_id = {}
+        self.next_index = 0
         
         # Try to load existing index
         self._load_index()
@@ -27,133 +28,187 @@ class VectorStore:
     def _load_index(self):
         """Load existing FAISS index and metadata"""
         try:
-            if os.path.exists(self.index_file) and os.path.exists(self.metadata_file):
+            if os.path.exists(self.index_path) and os.path.exists(self.metadata_path):
                 # Load FAISS index
-                self.index = faiss.read_index(self.index_file)
+                self.index = faiss.read_index(self.index_path)
+                logger.info(f"Loaded FAISS index with {self.index.ntotal} vectors")
                 
                 # Load metadata
-                with open(self.metadata_file, 'rb') as f:
-                    self.metadata = pickle.load(f)
+                with open(self.metadata_path, 'rb') as f:
+                    data = pickle.load(f)
+                    self.metadata = data.get('metadata', {})
+                    self.id_to_index = data.get('id_to_index', {})
+                    self.index_to_id = data.get('index_to_id', {})
+                    self.next_index = data.get('next_index', 0)
+                    self.dimension = data.get('dimension', self.dimension)
                 
-                logger.info(f"Loaded existing index with {self.index.ntotal} vectors")
+                logger.info(f"Loaded metadata for {len(self.metadata)} records")
+                return True
             else:
-                self._initialize_index()
-                
+                logger.info("No existing index found, will create new one")
+                return False
         except Exception as e:
-            logger.error(f"Failed to load index: {e}")
-            self._initialize_index()
+            logger.error(f"Failed to load existing index: {e}")
+            self._initialize_new_index()
+            return False
     
-    def _initialize_index(self):
+    def _initialize_new_index(self):
         """Initialize a new FAISS index"""
         try:
-            # Create a new FAISS index (Inner Product for cosine similarity with normalized vectors)
+            # Create a new FAISS index (Inner Product for cosine similarity)
             self.index = faiss.IndexFlatIP(self.dimension)
             self.metadata = {}
-            logger.info("Initialized new FAISS index")
+            self.id_to_index = {}
+            self.index_to_id = {}
+            self.next_index = 0
+            logger.info(f"Initialized new FAISS index with dimension {self.dimension}")
         except Exception as e:
-            logger.error(f"Failed to initialize index: {e}")
+            logger.error(f"Failed to initialize new index: {e}")
             raise
     
-    def _save_index(self):
-        """Save FAISS index and metadata to disk"""
-        try:
-            # Save FAISS index
-            faiss.write_index(self.index, self.index_file)
-            
-            # Save metadata
-            with open(self.metadata_file, 'wb') as f:
-                pickle.dump(self.metadata, f)
-                
-            logger.info("Index and metadata saved successfully")
-        except Exception as e:
-            logger.error(f"Failed to save index: {e}")
-            raise
+    def is_initialized(self) -> bool:
+        """Check if the vector store is initialized"""
+        return self.index is not None
     
-    def add_vector(self, vector_id: str, embedding: np.ndarray, metadata: Dict[str, Any]):
+    def add_vector(self, vector_id: str, embedding: List[float], metadata: Dict[str, Any]):
         """Add a vector to the store"""
         try:
-            if self.index is None:
-                self._initialize_index()
+            if not self.is_initialized():
+                self._initialize_new_index()
             
-            # Ensure embedding is the right shape and normalized
-            if embedding.shape[0] != self.dimension:
-                raise ValueError(f"Embedding dimension {embedding.shape[0]} doesn't match expected {self.dimension}")
+            # Convert embedding to numpy array and normalize for cosine similarity
+            vector = np.array(embedding, dtype=np.float32).reshape(1, -1)
             
-            # Normalize the embedding
-            embedding = embedding / np.linalg.norm(embedding)
+            # Normalize vector for cosine similarity with IndexFlatIP
+            faiss.normalize_L2(vector)
+            
+            # Check if this vector_id already exists
+            if vector_id in self.id_to_index:
+                logger.warning(f"Vector {vector_id} already exists, skipping")
+                return
             
             # Add to FAISS index
-            embedding_2d = embedding.reshape(1, -1).astype(np.float32)
-            self.index.add(embedding_2d)
+            self.index.add(vector)
             
-            # Store metadata with the current index position
-            current_index = self.index.ntotal - 1
-            self.metadata[current_index] = {
-                "vector_id": vector_id,
-                **metadata
-            }
+            # Store mappings
+            current_index = self.next_index
+            self.id_to_index[vector_id] = current_index
+            self.index_to_id[current_index] = vector_id
+            self.metadata[vector_id] = metadata
+            self.next_index += 1
             
-            # Save periodically (every 100 vectors)
-            if self.index.ntotal % 100 == 0:
-                self._save_index()
+            logger.debug(f"Added vector {vector_id} at index {current_index}")
             
         except Exception as e:
             logger.error(f"Failed to add vector {vector_id}: {e}")
             raise
     
-    def search(self, query_embedding: np.ndarray, top_k: int = 5, subject_id_filter: Optional[int] = None) -> List[Dict[str, Any]]:
+    def search(self, 
+              query_embedding: List[float], 
+              top_k: int = 5,
+              subject_id_filter: Optional[int] = None) -> List[VectorSearchResult]:
         """Search for similar vectors"""
         try:
-            if self.index is None or self.index.ntotal == 0:
+            if not self.is_initialized() or self.index.ntotal == 0:
+                logger.warning("No vectors in store")
                 return []
             
-            # Normalize query embedding
-            query_embedding = query_embedding / np.linalg.norm(query_embedding)
-            query_2d = query_embedding.reshape(1, -1).astype(np.float32)
+            # Convert query to numpy array and normalize
+            query_vector = np.array(query_embedding, dtype=np.float32).reshape(1, -1)
+            faiss.normalize_L2(query_vector)
             
-            # Search in FAISS index
-            # Get more results than needed in case we need to filter
-            search_k = min(top_k * 5, self.index.ntotal) if subject_id_filter else top_k
-            scores, indices = self.index.search(query_2d, search_k)
+            # Perform search
+            search_k = min(top_k * 3, self.index.ntotal)  # Search more to allow for filtering
+            similarities, indices = self.index.search(query_vector, search_k)
             
             results = []
-            for score, idx in zip(scores[0], indices[0]):
-                if idx == -1:  # FAISS returns -1 for invalid indices
+            for similarity, idx in zip(similarities[0], indices[0]):
+                if idx == -1:  # Invalid index
                     continue
                 
-                if idx not in self.metadata:
+                vector_id = self.index_to_id.get(idx)
+                if not vector_id or vector_id not in self.metadata:
                     continue
                 
-                metadata = self.metadata[idx]
+                metadata = self.metadata[vector_id]
                 
                 # Apply subject_id filter if specified
-                if subject_id_filter and metadata.get("subject_id") != subject_id_filter:
-                    continue
+                if subject_id_filter is not None:
+                    if metadata.get('subject_id') != subject_id_filter:
+                        continue
                 
-                result = {
-                    "note_id": metadata["note_id"],
-                    "subject_id": metadata["subject_id"],
-                    "hadm_id": metadata["hadm_id"],
-                    "charttime": metadata["charttime"],
-                    "cleaned_text": metadata["cleaned_text"],
-                    "similarity_score": float(score)
-                }
+                # Create result object
+                result = VectorSearchResult(
+                    note_id=metadata['note_id'],
+                    subject_id=metadata['subject_id'],
+                    hadm_id=metadata['hadm_id'],
+                    charttime=metadata['charttime'],
+                    cleaned_text=metadata['cleaned_text'],
+                    similarity_score=float(similarity)
+                )
+                
                 results.append(result)
                 
-                # Stop when we have enough results
                 if len(results) >= top_k:
                     break
             
+            logger.info(f"Found {len(results)} similar vectors")
             return results
             
         except Exception as e:
             logger.error(f"Search failed: {e}")
             raise
     
+    def save_index(self):
+        """Save the FAISS index and metadata to disk"""
+        try:
+            if not self.is_initialized():
+                logger.warning("No index to save")
+                return
+            
+            # Save FAISS index
+            faiss.write_index(self.index, self.index_path)
+            
+            # Save metadata
+            data = {
+                'metadata': self.metadata,
+                'id_to_index': self.id_to_index,
+                'index_to_id': self.index_to_id,
+                'next_index': self.next_index,
+                'dimension': self.dimension
+            }
+            
+            with open(self.metadata_path, 'wb') as f:
+                pickle.dump(data, f)
+            
+            logger.info(f"Saved index with {self.index.ntotal} vectors")
+            
+        except Exception as e:
+            logger.error(f"Failed to save index: {e}")
+            raise
+    
+    def clear(self):
+        """Clear the vector store"""
+        try:
+            # Remove files
+            if os.path.exists(self.index_path):
+                os.remove(self.index_path)
+            if os.path.exists(self.metadata_path):
+                os.remove(self.metadata_path)
+            
+            # Reset in-memory structures
+            self._initialize_new_index()
+            
+            logger.info("Cleared vector store")
+            
+        except Exception as e:
+            logger.error(f"Failed to clear vector store: {e}")
+            raise
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the vector store"""
         try:
-            if self.index is None:
+            if not self.is_initialized():
                 return {
                     "total_vectors": 0,
                     "vector_dimension": self.dimension,
@@ -161,17 +216,17 @@ class VectorStore:
                     "store_size_mb": 0.0
                 }
             
-            # Count unique subjects
+            # Calculate unique subjects
             unique_subjects = set()
             for metadata in self.metadata.values():
-                unique_subjects.add(metadata.get("subject_id"))
+                unique_subjects.add(metadata.get('subject_id'))
             
-            # Calculate store size
+            # Calculate file sizes
             store_size = 0
-            if os.path.exists(self.index_file):
-                store_size += os.path.getsize(self.index_file)
-            if os.path.exists(self.metadata_file):
-                store_size += os.path.getsize(self.metadata_file)
+            if os.path.exists(self.index_path):
+                store_size += os.path.getsize(self.index_path)
+            if os.path.exists(self.metadata_path):
+                store_size += os.path.getsize(self.metadata_path)
             
             return {
                 "total_vectors": self.index.ntotal,
@@ -184,30 +239,10 @@ class VectorStore:
             logger.error(f"Failed to get stats: {e}")
             raise
     
-    def clear(self):
-        """Clear the vector store"""
-        try:
-            self._initialize_index()
-            
-            # Remove files
-            if os.path.exists(self.index_file):
-                os.remove(self.index_file)
-            if os.path.exists(self.metadata_file):
-                os.remove(self.metadata_file)
-            
-            logger.info("Vector store cleared")
-        except Exception as e:
-            logger.error(f"Failed to clear vector store: {e}")
-            raise
-    
-    def is_initialized(self) -> bool:
-        """Check if the vector store is initialized and has data"""
-        return self.index is not None and self.index.ntotal > 0
-    
     def __del__(self):
-        """Save index on destruction"""
+        """Save index on deletion"""
         try:
-            if self.index is not None and self.index.ntotal > 0:
-                self._save_index()
+            if self.is_initialized() and self.index.ntotal > 0:
+                self.save_index()
         except:
-            pass  # Ignore errors during cleanup
+            pass
