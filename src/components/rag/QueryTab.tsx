@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ConfigurationPanel } from './config/ConfigurationPanel';
 import { ChatInterface } from './chat/ChatInterface';
 import { SampleQueries } from './samples/SampleQueries';
-import { useChat } from '@/hooks/useChat';
+import { useChat } from '@/hooks/chat';
 import { useVectorStore } from '@/hooks/useVectorStore';
 
 interface MimicRecord {

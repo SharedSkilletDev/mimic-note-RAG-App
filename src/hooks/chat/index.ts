@@ -1,20 +1,12 @@
 
-import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { useVectorStore } from './useVectorStore';
+import { useVectorStore } from '../useVectorStore';
 import { ollamaLLMService } from '@/services/ollamaLLM';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  sources?: string[];
-}
+import { useChatMessages } from './useChatMessages';
+import { useChatStreaming } from './useChatStreaming';
+import { useFallbackGenerator } from './useFallbackGenerator';
 
 export const useChat = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
   const { toast } = useToast();
   const { 
     searchSimilar, 
@@ -23,29 +15,21 @@ export const useChat = () => {
     checkBackendConnection 
   } = useVectorStore();
 
-  const simulateStreamingResponse = async (responseText: string, sources: string[]) => {
-    const words = responseText.split(/(\s+)/);
-    
-    const assistantMessageId = Date.now().toString();
-    const newAssistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      sources
-    };
-    
-    setMessages(prev => [...prev, newAssistantMessage]);
-    
-    for (let i = 0; i < words.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 25));
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessageId 
-          ? { ...msg, content: words.slice(0, i + 1).join('') }
-          : msg
-      ));
-    }
-  };
+  const {
+    messages,
+    setMessages,
+    addUserMessage,
+    removeUserMessage,
+    clearMessages
+  } = useChatMessages();
+
+  const {
+    isStreaming,
+    setIsStreaming,
+    simulateStreamingResponse
+  } = useChatStreaming();
+
+  const { generateEnhancedFallback } = useFallbackGenerator();
 
   const sendMessage = async (
     query: string, 
@@ -89,14 +73,7 @@ export const useChat = () => {
       return;
     }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: query,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const userMessage = addUserMessage(query);
     setIsStreaming(true);
 
     try {
@@ -121,7 +98,7 @@ export const useChat = () => {
           `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
         );
 
-        await simulateStreamingResponse(fallbackResponse, sources);
+        await simulateStreamingResponse(fallbackResponse, sources, setMessages);
         
         toast({
           title: "Response generated (Fallback mode)",
@@ -146,7 +123,7 @@ export const useChat = () => {
             `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
           );
 
-          await simulateStreamingResponse(llmResponse, sources);
+          await simulateStreamingResponse(llmResponse, sources, setMessages);
           
           toast({
             title: "LLM response generated successfully",
@@ -161,7 +138,7 @@ export const useChat = () => {
             `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
           );
 
-          await simulateStreamingResponse(fallbackResponse, sources);
+          await simulateStreamingResponse(fallbackResponse, sources, setMessages);
           
           toast({
             title: "Response generated (LLM fallback)",
@@ -174,7 +151,7 @@ export const useChat = () => {
     } catch (error) {
       console.error('❌ useChat: Response generation error:', error);
       
-      setMessages(prev => prev.filter(msg => msg.role !== 'user' || msg.content !== query));
+      removeUserMessage(query);
       
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       toast({
@@ -187,60 +164,8 @@ export const useChat = () => {
     }
   };
 
-  const generateEnhancedFallback = (query: string, similarRecords: any[]) => {
-    const recordAnalysis = similarRecords.map((record, index) => {
-      const excerpt = record.cleaned_text.substring(0, 500);
-      const hasDischarge = excerpt.toLowerCase().includes('discharge') || 
-                          excerpt.toLowerCase().includes('medication') ||
-                          excerpt.toLowerCase().includes('prescribed');
-      
-      return {
-        ...record,
-        index: index + 1,
-        excerpt,
-        relevanceNote: hasDischarge ? 'Contains discharge/medication information' : 'General clinical context'
-      };
-    });
-
-    return `# Clinical Records Analysis
-
-## Query: ${query}
-
-### Executive Summary
-Found **${similarRecords.length} relevant clinical records** with similarity scores ranging from **${(similarRecords[similarRecords.length - 1]?.similarity_score * 100).toFixed(1)}%** to **${(similarRecords[0]?.similarity_score * 100).toFixed(1)}%**.
-
-### Detailed Clinical Records
-
-${recordAnalysis.map(record => `
-#### Record ${record.index} - ${record.relevanceNote}
-- **Patient ID**: ${record.subject_id}
-- **Admission ID**: ${record.hadm_id} 
-- **Date**: ${record.charttime}
-- **Similarity Score**: ${(record.similarity_score * 100).toFixed(1)}%
-
-**Clinical Content**:
-${record.excerpt}${record.cleaned_text.length > 500 ? '\n\n*[Content truncated - full record available in source]*' : ''}
-
----
-`).join('')}
-
-### Clinical Insights & Recommendations
-
-**Pattern Analysis**: The retrieved records show semantic similarity to your query about "${query}". Each record represents a clinical encounter that may contain relevant information.
-
-**Next Steps**: 
-1. Review each record's full content for specific details
-2. Cross-reference admission IDs for complete care episodes
-3. Consider temporal relationships between records
-
-**Technical Note**: *This analysis was generated using vector similarity search. For enhanced clinical interpretation with natural language processing, ensure Ollama LLM service is running.*
-
----
-*Analysis generated on ${new Date().toLocaleString()}*`;
-  };
-
   const clearConversation = () => {
-    setMessages([]);
+    clearMessages();
     toast({
       title: "Conversation cleared",
     });
@@ -253,3 +178,6 @@ ${record.excerpt}${record.cleaned_text.length > 500 ? '\n\n*[Content truncated -
     clearConversation
   };
 };
+
+// Re-export types for convenience
+export type { Message } from './types';
