@@ -23,45 +23,53 @@ export class OllamaLLMService {
     similarRecords: any[], 
     model: string = this.defaultModel
   ): Promise<string> {
-    // Create detailed context from vector search results
+    console.log('🤖 OllamaLLM: Starting structured response generation...');
+    console.log('🤖 OllamaLLM: Using model:', model);
+    console.log('🤖 OllamaLLM: Processing', similarRecords.length, 'records');
+
     const contextSections = similarRecords.map((record, index) => {
       return `
 **Clinical Record ${index + 1}** (Similarity: ${(record.similarity_score * 100).toFixed(1)}%)
 - Patient ID: ${record.subject_id}
 - Hospital Admission: ${record.hadm_id}
-- Date: ${record.charttime}
+- Chart Date: ${record.charttime}
 - Clinical Notes: ${record.cleaned_text}
       `.trim();
     }).join('\n\n');
 
-    // Create a comprehensive system prompt for medical analysis
-    const systemPrompt = `You are an expert clinical data analyst specializing in medical record analysis. Your task is to analyze clinical data from the MIMIC IV database and provide comprehensive, structured responses.
+    const systemPrompt = `You are an expert clinical data analyst specializing in medical record analysis from the MIMIC-IV database. Your task is to analyze clinical records and provide comprehensive, well-structured responses.
 
-Guidelines for your response:
-1. **Structure**: Organize your response with clear sections and headers
-2. **Clinical Focus**: Emphasize medical insights and clinical relevance
-3. **Evidence-Based**: Reference specific records and similarity scores
-4. **Comprehensive**: Provide detailed analysis (aim for 800-1200 tokens)
-5. **Professional**: Use appropriate medical terminology while remaining accessible
+CRITICAL RESPONSE REQUIREMENTS:
+1. **Always provide a complete, structured analysis**
+2. **Use clear headings and sections for organization**
+3. **Focus on medical insights and clinical relevance**
+4. **Reference specific records with evidence**
+5. **Provide comprehensive analysis (aim for 1000-1500 tokens)**
+6. **Use professional medical terminology while remaining accessible**
 
-Response Format:
-- **Summary**: Brief overview of findings
-- **Key Clinical Insights**: Important medical observations
-- **Pattern Analysis**: Trends across similar cases
-- **Detailed Findings**: In-depth analysis of each relevant record
-- **Clinical Recommendations**: Suggested areas for further investigation`;
+REQUIRED RESPONSE STRUCTURE:
+- **Clinical Query Analysis**: Brief overview of the question
+- **Key Medical Findings**: Important clinical observations from the records
+- **Evidence-Based Analysis**: Detailed examination of each relevant record
+- **Clinical Patterns & Insights**: Trends and correlations across cases
+- **Professional Summary**: Comprehensive clinical interpretation
+- **Additional Considerations**: Relevant medical context or recommendations
+
+Ensure your response is thorough, well-organized, and provides maximum clinical value.`;
 
     const userPrompt = `
-**Query**: ${query}
+**Clinical Query**: ${query}
 
-**Clinical Context**: I found ${similarRecords.length} relevant clinical records with similarity scores ranging from ${(similarRecords[0]?.similarity_score * 100).toFixed(1)}% to ${(similarRecords[similarRecords.length - 1]?.similarity_score * 100).toFixed(1)}%.
+**Available Clinical Evidence**: I have retrieved ${similarRecords.length} relevant clinical records with similarity scores ranging from ${(similarRecords[0]?.similarity_score * 100).toFixed(1)}% to ${(similarRecords[similarRecords.length - 1]?.similarity_score * 100).toFixed(1)}%.
 
 **Clinical Records for Analysis**:
 ${contextSections}
 
-Please provide a comprehensive, structured analysis of these clinical records in relation to the query. Focus on medical insights, patterns, and clinical significance. Aim for a detailed response of approximately 800-1200 tokens.`;
+Please provide a comprehensive, structured clinical analysis of these records in relation to the query. Focus on extracting relevant medical information, identifying patterns, and providing professional clinical insights. Ensure your response is complete and well-organized with clear sections.`;
 
     try {
+      console.log('🤖 OllamaLLM: Sending request to Ollama API...');
+      
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: {
@@ -82,37 +90,67 @@ Please provide a comprehensive, structured analysis of these clinical records in
           options: {
             temperature: 0.7,
             top_p: 0.9,
-            num_predict: 1200,  // Increased token limit for longer responses
-            stop: ['<|end|>', '</response>']
+            num_predict: 1500,  // Increased for more comprehensive responses
+            stop: ['<|end|>', '</response>', '<|endoftext|>']
           },
           stream: false
         })
       });
 
+      console.log('🤖 OllamaLLM: Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('🤖 OllamaLLM: API error response:', errorText);
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data: OllamaResponse = await response.json();
+      console.log('🤖 OllamaLLM: Response data structure:', {
+        hasMessage: !!data.message,
+        hasContent: !!data.message?.content,
+        contentLength: data.message?.content?.length || 0,
+        model: data.model,
+        done: data.done
+      });
       
       if (data.message && data.message.content) {
+        console.log('✅ OllamaLLM: Successfully generated response');
+        console.log('📝 OllamaLLM: Response preview:', data.message.content.substring(0, 200) + '...');
         return data.message.content;
       } else {
-        throw new Error('Invalid response format from Ollama');
+        console.error('🤖 OllamaLLM: Invalid response structure:', data);
+        throw new Error('Invalid response format from Ollama - missing message content');
       }
 
     } catch (error) {
-      console.error('Ollama LLM generation failed:', error);
+      console.error('❌ OllamaLLM: Generation failed:', error);
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Cannot connect to Ollama service - ensure it is running at ' + this.baseUrl);
+      }
+      
       throw new Error(`Failed to generate LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async checkConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`);
-      return response.ok;
+      console.log('🔌 OllamaLLM: Checking connection to', this.baseUrl);
+      
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const isConnected = response.ok;
+      console.log('🔌 OllamaLLM: Connection result:', isConnected);
+      
+      return isConnected;
     } catch (error) {
-      console.error('Ollama connection check failed:', error);
+      console.error('🔌 OllamaLLM: Connection check failed:', error);
       return false;
     }
   }
