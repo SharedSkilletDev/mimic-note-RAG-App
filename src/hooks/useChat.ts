@@ -15,7 +15,7 @@ export const useChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const { toast } = useToast();
-  const { searchSimilar, isVectorStoreReady, isBackendConnected } = useVectorStore();
+  const { searchSimilar, isVectorStoreReady, isBackendConnected, checkBackendConnection } = useVectorStore();
 
   const generateResponse = async (query: string, similarRecords: any[]) => {
     // Create context from similar records with similarity scores
@@ -77,13 +77,22 @@ export const useChat = () => {
       return;
     }
 
+    console.log('useChat: Checking backend connection status...');
+    console.log('useChat: isBackendConnected:', isBackendConnected);
+    console.log('useChat: isVectorStoreReady:', isVectorStoreReady);
+
+    // Try to reconnect if not connected
     if (!isBackendConnected) {
-      toast({
-        title: "Backend not connected",
-        description: "Please connect to the backend service first in the Vector Store tab",
-        variant: "destructive",
-      });
-      return;
+      console.log('useChat: Backend not connected, attempting reconnection...');
+      const connected = await checkBackendConnection();
+      if (!connected) {
+        toast({
+          title: "Backend not connected",
+          description: "Could not connect to the backend service. Please ensure it's running on http://localhost:8000",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     if (!isVectorStoreReady) {
@@ -106,7 +115,7 @@ export const useChat = () => {
     setIsStreaming(true);
 
     try {
-      console.log('Performing backend vector search for query:', query);
+      console.log('useChat: Performing backend vector search for query:', query);
       
       // Perform backend vector search with subject filter if specified
       const similarRecords = await searchSimilar(query, 5, subjectId || undefined);
@@ -115,7 +124,7 @@ export const useChat = () => {
         throw new Error('No similar records found in the backend vector store');
       }
 
-      console.log(`Found ${similarRecords.length} similar records from backend`);
+      console.log(`useChat: Found ${similarRecords.length} similar records from backend`);
       
       // Generate response based on similar records
       const responseText = await generateResponse(query, similarRecords);
@@ -132,7 +141,7 @@ export const useChat = () => {
         description: `Found ${similarRecords.length} similar records using backend vector search`,
       });
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('useChat: Chat error:', error);
       toast({
         title: "Error generating response",
         description: error instanceof Error ? error.message : "Backend service error occurred",

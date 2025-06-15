@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ConfigurationPanel } from './config/ConfigurationPanel';
 import { ChatInterface } from './chat/ChatInterface';
 import { SampleQueries } from './samples/SampleQueries';
 import { useChat } from '@/hooks/useChat';
+import { useVectorStore } from '@/hooks/useVectorStore';
 
 interface MimicRecord {
   note_id: string;
@@ -34,6 +35,17 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   
   const { toast } = useToast();
   const { messages, isStreaming, sendMessage, clearConversation } = useChat();
+  const { checkBackendConnection, isBackendConnected, isVectorStoreReady } = useVectorStore();
+
+  // Check backend connection when component mounts
+  useEffect(() => {
+    const checkConnection = async () => {
+      console.log('QueryTab: Checking backend connection on mount...');
+      await checkBackendConnection();
+    };
+    
+    checkConnection();
+  }, [checkBackendConnection]);
 
   // Get unique subject IDs from uploaded data
   const availableSubjectIds = React.useMemo(() => {
@@ -42,6 +54,20 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   }, [uploadedData]);
 
   const handleSendMessage = async () => {
+    // Double-check connection before sending message
+    if (!isBackendConnected) {
+      console.log('QueryTab: Backend not connected, attempting to reconnect...');
+      const connected = await checkBackendConnection();
+      if (!connected) {
+        toast({
+          title: "Backend connection failed",
+          description: "Please ensure the backend service is running and try again",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     await sendMessage(query, subjectId, availableSubjectIds, selectedModel);
     setQuery('');
   };
