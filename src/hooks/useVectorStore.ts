@@ -26,6 +26,7 @@ export const useVectorStore = () => {
         description: "Ready to process embeddings",
       });
     } catch (error) {
+      console.error('Initialization error:', error);
       toast({
         title: "Initialization failed",
         description: "Could not initialize embedding model",
@@ -36,7 +37,9 @@ export const useVectorStore = () => {
   }, [toast]);
 
   const vectorizeData = useCallback(async (data: any[]) => {
-    console.log('useVectorStore: Starting vectorization with data:', data?.length || 0, 'records');
+    console.log('=== useVectorStore: Starting vectorization ===');
+    console.log('Input data length:', data?.length || 0);
+    console.log('Sample input:', data?.[0]);
     
     if (!data || data.length === 0) {
       toast({
@@ -50,56 +53,66 @@ export const useVectorStore = () => {
     setIsVectorizing(true);
     setVectorizationProgress(0);
     setIsVectorStoreReady(false);
+    setVectorizedCount(0);
 
     try {
       console.log(`Starting vectorization of ${data.length} records`);
-      console.log('Sample record structure:', data[0]);
       
       const vectorizedRecords = await vectorSearchService.vectorizeData(
         data,
         (progress) => {
-          console.log(`Vectorization progress: ${progress}%`);
+          console.log(`Progress update: ${progress}%`);
           setVectorizationProgress(progress);
         }
       );
 
-      console.log(`Vectorization completed: ${vectorizedRecords.length} records processed`);
+      console.log(`Vectorization result: ${vectorizedRecords.length} records processed`);
       
-      setVectorizedCount(vectorizedRecords.length);
-      setIsVectorStoreReady(vectorizedRecords.length > 0);
+      // Update state with results
+      const finalCount = vectorizedRecords.length;
+      setVectorizedCount(finalCount);
+      setIsVectorStoreReady(finalCount > 0);
       
-      if (vectorizedRecords.length > 0) {
+      if (finalCount > 0) {
         toast({
           title: "Vectorization complete",
-          description: `Successfully vectorized ${vectorizedRecords.length} records`,
+          description: `Successfully vectorized ${finalCount} out of ${data.length} records`,
         });
+        console.log(`✅ Vectorization successful: ${finalCount} records ready for search`);
       } else {
         toast({
-          title: "Vectorization completed but no records processed",
-          description: "Check console for details about data structure issues",
+          title: "Vectorization failed",
+          description: "No records could be processed. Check console for details.",
           variant: "destructive",
         });
+        console.error('❌ Vectorization failed: No records processed');
       }
     } catch (error) {
-      console.error('Vectorization failed:', error);
+      console.error('❌ Vectorization error:', error);
       toast({
         title: "Vectorization failed",
-        description: "Could not process the data for vector search",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      setIsVectorStoreReady(false);
+      setVectorizedCount(0);
     } finally {
       setIsVectorizing(false);
+      console.log('=== useVectorStore: Vectorization process complete ===');
     }
   }, [toast]);
 
   const searchSimilar = useCallback(async (query: string, topK = 5) => {
     try {
-      return await vectorSearchService.searchSimilar(query, topK);
+      console.log(`Searching for: "${query}"`);
+      const results = await vectorSearchService.searchSimilar(query, topK);
+      console.log(`Search returned ${results.length} results`);
+      return results;
     } catch (error) {
       console.error('Vector search failed:', error);
       toast({
         title: "Search failed",
-        description: "Could not perform vector search",
+        description: "Could not perform vector search. Ensure data is vectorized first.",
         variant: "destructive",
       });
       return [];
