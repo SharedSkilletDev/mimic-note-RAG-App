@@ -77,11 +77,11 @@ export const useChat = () => {
       return;
     }
 
-    console.log('useChat: Checking backend connection status...');
-    console.log('useChat: isBackendConnected:', isBackendConnected);
-    console.log('useChat: isVectorStoreReady:', isVectorStoreReady);
+    console.log('useChat: Starting message send process...');
+    console.log('useChat: Current state - isBackendConnected:', isBackendConnected);
+    console.log('useChat: Current state - isVectorStoreReady:', isVectorStoreReady);
 
-    // Try to reconnect if not connected
+    // First check if backend is connected
     if (!isBackendConnected) {
       console.log('useChat: Backend not connected, attempting reconnection...');
       const connected = await checkBackendConnection();
@@ -95,7 +95,11 @@ export const useChat = () => {
       }
     }
 
+    // After connection check, re-verify vector store status
+    console.log('useChat: After connection check - isVectorStoreReady:', isVectorStoreReady);
+    
     if (!isVectorStoreReady) {
+      console.log('useChat: Vector store not ready after connection check');
       toast({
         title: "Vector store not ready",
         description: "Please vectorize your data first in the Vector Store tab",
