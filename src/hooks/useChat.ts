@@ -78,12 +78,12 @@ export const useChat = () => {
     }
 
     console.log('useChat: Starting message send process...');
-    console.log('useChat: Current state - isBackendConnected:', isBackendConnected);
-    console.log('useChat: Current state - isVectorStoreReady:', isVectorStoreReady);
+    console.log('useChat: Initial state - isBackendConnected:', isBackendConnected);
+    console.log('useChat: Initial state - isVectorStoreReady:', isVectorStoreReady);
 
-    // First check if backend is connected
-    if (!isBackendConnected) {
-      console.log('useChat: Backend not connected, attempting reconnection...');
+    // First ensure backend connection and vector store readiness
+    if (!isBackendConnected || !isVectorStoreReady) {
+      console.log('useChat: Backend or vector store not ready, attempting connection check...');
       const connected = await checkBackendConnection();
       if (!connected) {
         toast({
@@ -93,13 +93,29 @@ export const useChat = () => {
         });
         return;
       }
+      
+      // After connection check, wait a moment for state to propagate and then check again
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('useChat: After connection check - isVectorStoreReady:', isVectorStoreReady);
     }
 
-    // After connection check, re-verify vector store status
-    console.log('useChat: After connection check - isVectorStoreReady:', isVectorStoreReady);
+    // Get fresh state values by calling the hook functions directly
+    const vectorStore = useVectorStore();
+    const currentBackendStatus = vectorStore.isBackendConnected;
+    const currentVectorStoreStatus = vectorStore.isVectorStoreReady;
     
-    if (!isVectorStoreReady) {
-      console.log('useChat: Vector store not ready after connection check');
+    console.log('useChat: Fresh state check - backend:', currentBackendStatus, 'vectorStore:', currentVectorStoreStatus);
+    
+    if (!currentBackendStatus) {
+      toast({
+        title: "Backend not connected",
+        description: "Backend connection failed. Please check the Vector Store tab.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!currentVectorStoreStatus) {
       toast({
         title: "Vector store not ready",
         description: "Please vectorize your data first in the Vector Store tab",
