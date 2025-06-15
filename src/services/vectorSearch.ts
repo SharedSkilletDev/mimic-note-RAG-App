@@ -1,5 +1,5 @@
 
-import { pipeline, Pipeline } from '@huggingface/transformers';
+import { pipeline } from '@huggingface/transformers';
 
 interface MimicRecord {
   note_id: string;
@@ -14,7 +14,7 @@ interface VectorizedRecord extends MimicRecord {
 }
 
 export class VectorSearchService {
-  private embedder: Pipeline | null = null;
+  private embedder: any = null;
   private vectorizedRecords: VectorizedRecord[] = [];
   private isLoading = false;
 
@@ -48,9 +48,12 @@ export class VectorSearchService {
         const text = record.cleaned_text.substring(0, 512);
         const embedding = await this.embedder(text, { pooling: 'mean', normalize: true });
         
+        // Convert tensor data to number array
+        const embeddingArray: number[] = Array.from(embedding.data as Float32Array);
+        
         vectorizedRecords.push({
           ...record,
-          embedding: Array.from(embedding.data)
+          embedding: embeddingArray
         });
 
         if (onProgress) {
@@ -72,7 +75,7 @@ export class VectorSearchService {
 
     // Get query embedding
     const queryEmbedding = await this.embedder(query, { pooling: 'mean', normalize: true });
-    const queryVector = Array.from(queryEmbedding.data);
+    const queryVector: number[] = Array.from(queryEmbedding.data as Float32Array);
 
     // Calculate cosine similarity with all records
     const similarities = this.vectorizedRecords.map(record => ({
