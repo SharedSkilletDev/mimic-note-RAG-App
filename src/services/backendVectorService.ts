@@ -76,53 +76,79 @@ export class BackendVectorService {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Check if the response is streaming
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('text/plain')) {
-        // Handle streaming response for progress updates
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: VectorizeResponse | null = null;
 
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-            for (const line of lines) {
-              if (line.trim()) {
-                try {
-                  const progressData = JSON.parse(line);
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                // Handle lines that start with "data: "
+                let jsonStr = line.trim();
+                if (jsonStr.startsWith('data: ')) {
+                  jsonStr = jsonStr.substring(6); // Remove "data: " prefix
+                }
+                
+                if (jsonStr) {
+                  const progressData = JSON.parse(jsonStr);
+                  
+                  // Check if this is a progress update
                   if (progressData.progress !== undefined && onProgress) {
                     console.log(`📈 Progress: ${progressData.progress}%`);
                     onProgress(progressData.progress);
                   }
-                } catch (e) {
-                  // Ignore parsing errors for non-JSON lines
+                  
+                  // Check if this is the final result
+                  if (progressData.success !== undefined && progressData.vectorized_count !== undefined) {
+                    finalResult = progressData as VectorizeResponse;
+                  }
                 }
+              } catch (e) {
+                console.log('Skipping non-JSON line:', line);
+                // Ignore parsing errors for non-JSON lines
               }
             }
           }
         }
-
-        // The final result should be in the buffer
-        if (buffer.trim()) {
-          const result = JSON.parse(buffer);
-          console.log('✅ Vectorization complete:', result);
-          return result;
-        }
-      } else {
-        // Handle regular JSON response
-        const result = await response.json();
-        console.log('✅ Vectorization complete:', result);
-        return result;
       }
 
-      throw new Error('No valid response received');
+      // Process any remaining data in the buffer
+      if (buffer.trim()) {
+        try {
+          let jsonStr = buffer.trim();
+          if (jsonStr.startsWith('data: ')) {
+            jsonStr = jsonStr.substring(6);
+          }
+          
+          if (jsonStr) {
+            const result = JSON.parse(jsonStr);
+            if (result.success !== undefined && result.vectorized_count !== undefined) {
+              finalResult = result as VectorizeResponse;
+            }
+          }
+        } catch (e) {
+          console.log('Failed to parse final buffer:', buffer);
+        }
+      }
+
+      if (finalResult) {
+        console.log('✅ Vectorization complete:', finalResult);
+        return finalResult;
+      } else {
+        throw new Error('No final result received from streaming response');
+      }
+
     } catch (error) {
       console.error('❌ Vectorization failed:', error);
       throw error;
