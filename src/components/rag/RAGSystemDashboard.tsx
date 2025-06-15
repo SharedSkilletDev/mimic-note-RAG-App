@@ -5,6 +5,7 @@ import { DataUploadTab } from "./DataUploadTab";
 import { QueryTab } from "./QueryTab";
 import { VectorStoreTab } from "./VectorStoreTab";
 import { SettingsTab } from "./SettingsTab";
+import { HIPAAComplianceTab } from "./HIPAAComplianceTab";
 
 interface MimicRecord {
   note_id: string;
@@ -69,10 +70,11 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="upload">Data Upload</TabsTrigger>
           <TabsTrigger value="query">Query System</TabsTrigger>
           <TabsTrigger value="vector">Vector Store</TabsTrigger>
+          <TabsTrigger value="hipaa">HIPAA Compliance</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -86,6 +88,10 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
 
         <TabsContent value="vector" className="mt-6">
           <VectorStoreTab uploadedData={uploadedData} />
+        </TabsContent>
+
+        <TabsContent value="hipaa" className="mt-6">
+          <HIPAAComplianceTab />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
