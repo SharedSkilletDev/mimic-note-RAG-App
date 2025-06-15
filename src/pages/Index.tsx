@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { RAGSystemDashboard } from "@/components/rag/RAGSystemDashboard";
 import { AppSidebar } from "@/components/rag/AppSidebar";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -17,7 +17,7 @@ const Index = () => {
             <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
             <SidebarInset className="flex-1">
               <div className="flex justify-between items-center p-4 border-b">
-                <div></div>
+                <SidebarTrigger />
                 <UserMenu />
               </div>
               <RAGSystemDashboard activeTab={activeTab} onTabChange={setActiveTab} />
