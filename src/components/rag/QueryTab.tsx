@@ -44,7 +44,14 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   const [dateRange, setDateRange] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [availableModels] = useState(['llama3.2:latest', 'llama3.2:3b', 'mistral:latest', 'codellama:latest']);
+  const [availableModels] = useState([
+    'llama3.2:latest',
+    'llama3.1:8b',
+    'mistral:latest',
+    'gemma2',
+    'summarizer:latest',
+    'nomic-embed-text:latest'
+  ]);
   const [context, setContext] = useState('');
   const [systemPrompt, setSystemPrompt] = useState(`You are a helpful AI assistant specialized in analyzing clinical data from MIMIC IV dataset. 
 You have access to discharge summaries and clinical notes. Please provide accurate, helpful responses based on the provided context.
@@ -193,6 +200,9 @@ Always cite your sources when referencing specific patient data.`);
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Models available on your local Ollama instance
+              </p>
             </div>
 
             <div className="space-y-2">
