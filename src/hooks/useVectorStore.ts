@@ -35,10 +35,13 @@ export const useVectorStore = () => {
     }
   }, [toast]);
 
-  const vectorizeData = useCallback(async (data: MimicRecord[]) => {
-    if (data.length === 0) {
+  const vectorizeData = useCallback(async (data: any[]) => {
+    console.log('useVectorStore: Starting vectorization with data:', data?.length || 0, 'records');
+    
+    if (!data || data.length === 0) {
       toast({
         title: "No data to vectorize",
+        description: "Please upload data first",
         variant: "destructive",
       });
       return;
@@ -50,19 +53,33 @@ export const useVectorStore = () => {
 
     try {
       console.log(`Starting vectorization of ${data.length} records`);
+      console.log('Sample record structure:', data[0]);
       
       const vectorizedRecords = await vectorSearchService.vectorizeData(
         data,
-        (progress) => setVectorizationProgress(progress)
+        (progress) => {
+          console.log(`Vectorization progress: ${progress}%`);
+          setVectorizationProgress(progress);
+        }
       );
 
-      setVectorizedCount(vectorizedRecords.length);
-      setIsVectorStoreReady(true);
+      console.log(`Vectorization completed: ${vectorizedRecords.length} records processed`);
       
-      toast({
-        title: "Vectorization complete",
-        description: `Successfully vectorized ${vectorizedRecords.length} records`,
-      });
+      setVectorizedCount(vectorizedRecords.length);
+      setIsVectorStoreReady(vectorizedRecords.length > 0);
+      
+      if (vectorizedRecords.length > 0) {
+        toast({
+          title: "Vectorization complete",
+          description: `Successfully vectorized ${vectorizedRecords.length} records`,
+        });
+      } else {
+        toast({
+          title: "Vectorization completed but no records processed",
+          description: "Check console for details about data structure issues",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error('Vectorization failed:', error);
       toast({

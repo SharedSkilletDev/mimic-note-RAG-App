@@ -34,22 +34,84 @@ export class VectorSearchService {
     }
   }
 
-  async vectorizeData(records: MimicRecord[], onProgress?: (progress: number) => void): Promise<VectorizedRecord[]> {
+  async vectorizeData(records: any[], onProgress?: (progress: number) => void): Promise<VectorizedRecord[]> {
     if (!this.embedder) {
       await this.initialize();
     }
 
+    console.log('Starting vectorization process...');
+    console.log('Raw input data:', records.slice(0, 2)); // Log first 2 records to see structure
+
+    // Convert and validate the input data
+    const validRecords: MimicRecord[] = [];
+    
+    for (const record of records) {
+      try {
+        // Handle different possible data structures
+        let mimicRecord: MimicRecord;
+        
+        if (record.note_id && record.cleaned_text) {
+          // Direct MIMIC structure
+          mimicRecord = {
+            note_id: String(record.note_id),
+            subject_id: Number(record.subject_id) || 0,
+            hadm_id: Number(record.hadm_id) || 0,
+            charttime: String(record.charttime || ''),
+            cleaned_text: String(record.cleaned_text)
+          };
+        } else if (record.text || record.content) {
+          // Alternative structure with text/content field
+          mimicRecord = {
+            note_id: String(record.id || record.note_id || Date.now()),
+            subject_id: Number(record.subject_id || record.patient_id) || 0,
+            hadm_id: Number(record.hadm_id || record.admission_id) || 0,
+            charttime: String(record.charttime || record.date || ''),
+            cleaned_text: String(record.text || record.content)
+          };
+        } else {
+          console.warn('Skipping record with invalid structure:', record);
+          continue;
+        }
+
+        // Validate that we have essential fields
+        if (mimicRecord.cleaned_text && mimicRecord.cleaned_text.trim().length > 0) {
+          validRecords.push(mimicRecord);
+        } else {
+          console.warn('Skipping record with empty text:', mimicRecord);
+        }
+      } catch (error) {
+        console.error('Error processing record:', record, error);
+      }
+    }
+
+    console.log(`Processed ${validRecords.length} valid records out of ${records.length} total records`);
+
+    if (validRecords.length === 0) {
+      console.error('No valid records found to vectorize');
+      return [];
+    }
+
     const vectorizedRecords: VectorizedRecord[] = [];
     
-    for (let i = 0; i < records.length; i++) {
-      const record = records[i];
+    for (let i = 0; i < validRecords.length; i++) {
+      const record = validRecords[i];
       try {
-        // Truncate text to avoid token limits
-        const text = record.cleaned_text.substring(0, 512);
+        // Truncate text to avoid token limits and ensure it's not empty
+        const text = record.cleaned_text.trim().substring(0, 512);
+        
+        if (text.length === 0) {
+          console.warn(`Skipping record ${record.note_id} - empty text after processing`);
+          continue;
+        }
+
+        console.log(`Vectorizing record ${i + 1}/${validRecords.length}: ${record.note_id}`);
+        
         const embedding = await this.embedder(text, { pooling: 'mean', normalize: true });
         
         // Convert tensor data to number array
         const embeddingArray: number[] = Array.from(embedding.data as Float32Array);
+        
+        console.log(`Generated embedding of length ${embeddingArray.length} for record ${record.note_id}`);
         
         vectorizedRecords.push({
           ...record,
@@ -57,13 +119,14 @@ export class VectorSearchService {
         });
 
         if (onProgress) {
-          onProgress((i + 1) / records.length * 100);
+          onProgress((i + 1) / validRecords.length * 100);
         }
       } catch (error) {
         console.error(`Failed to vectorize record ${record.note_id}:`, error);
       }
     }
 
+    console.log(`Successfully vectorized ${vectorizedRecords.length} records`);
     this.vectorizedRecords = vectorizedRecords;
     return vectorizedRecords;
   }
@@ -72,6 +135,8 @@ export class VectorSearchService {
     if (!this.embedder || this.vectorizedRecords.length === 0) {
       throw new Error('Vector search not initialized or no data vectorized');
     }
+
+    console.log(`Searching for similar records to: "${query}"`);
 
     // Get query embedding
     const queryEmbedding = await this.embedder(query, { pooling: 'mean', normalize: true });
@@ -85,7 +150,10 @@ export class VectorSearchService {
 
     // Sort by similarity and return top K
     similarities.sort((a, b) => b.similarity - a.similarity);
-    return similarities.slice(0, topK).map(item => item.record);
+    const results = similarities.slice(0, topK).map(item => item.record);
+    
+    console.log(`Found ${results.length} similar records`);
+    return results;
   }
 
   private cosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -101,6 +169,7 @@ export class VectorSearchService {
 
   clearData() {
     this.vectorizedRecords = [];
+    console.log('Vector store cleared');
   }
 }
 
