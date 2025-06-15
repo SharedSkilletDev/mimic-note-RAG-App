@@ -94,19 +94,13 @@ export const useChat = () => {
         return;
       }
       
-      // After connection check, wait a moment for state to propagate and then check again
-      await new Promise(resolve => setTimeout(resolve, 100));
-      console.log('useChat: After connection check - isVectorStoreReady:', isVectorStoreReady);
+      // After connection check, wait a moment for state to update
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('useChat: After connection check wait period');
     }
 
-    // Get fresh state values by calling the hook functions directly
-    const vectorStore = useVectorStore();
-    const currentBackendStatus = vectorStore.isBackendConnected;
-    const currentVectorStoreStatus = vectorStore.isVectorStoreReady;
-    
-    console.log('useChat: Fresh state check - backend:', currentBackendStatus, 'vectorStore:', currentVectorStoreStatus);
-    
-    if (!currentBackendStatus) {
+    // Check final state before proceeding
+    if (!isBackendConnected) {
       toast({
         title: "Backend not connected",
         description: "Backend connection failed. Please check the Vector Store tab.",
@@ -115,7 +109,7 @@ export const useChat = () => {
       return;
     }
 
-    if (!currentVectorStoreStatus) {
+    if (!isVectorStoreReady) {
       toast({
         title: "Vector store not ready",
         description: "Please vectorize your data first in the Vector Store tab",
