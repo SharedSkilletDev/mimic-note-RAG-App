@@ -1,19 +1,12 @@
 
 import { useToast } from "@/hooks/use-toast";
-import { useVectorStore } from '../useVectorStore';
-import { ollamaLLMService } from '@/services/ollamaLLM';
 import { useChatMessages } from './useChatMessages';
 import { useChatStreaming } from './useChatStreaming';
 import { useFallbackGenerator } from './useFallbackGenerator';
+import { useChatAPI } from './useChatAPI';
 
 export const useChat = () => {
   const { toast } = useToast();
-  const { 
-    searchSimilar, 
-    isVectorStoreReady, 
-    isBackendConnected, 
-    checkBackendConnection 
-  } = useVectorStore();
 
   const {
     messages,
@@ -30,6 +23,13 @@ export const useChat = () => {
   } = useChatStreaming();
 
   const { generateEnhancedFallback } = useFallbackGenerator();
+
+  const {
+    performVectorSearch,
+    generateLLMResponse,
+    validateConnectionState,
+    createSourceReferences
+  } = useChatAPI();
 
   const sendMessage = async (
     query: string, 
@@ -48,104 +48,44 @@ export const useChat = () => {
     console.log('🚀 useChat: Starting message send process...');
     console.log('🚀 useChat: Using model:', selectedModel);
 
-    if (!isBackendConnected) {
-      console.log('❌ useChat: Backend not connected, attempting refresh...');
-      const refreshResult = await checkBackendConnection();
-      
-      if (!refreshResult) {
-        toast({
-          title: "Backend connection failed",
-          description: "Could not connect to the backend service.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    if (!isVectorStoreReady) {
-      toast({
-        title: "Vector store not ready",
-        description: "Please ensure your data is vectorized first.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Validate connection state
+    const isValid = await validateConnectionState();
+    if (!isValid) return;
 
     const userMessage = addUserMessage(query);
     setIsStreaming(true);
 
     try {
-      console.log('🔍 useChat: Performing vector search...');
-      
-      const similarRecords = await searchSimilar(query, 5, subjectId || undefined);
-      console.log('📊 useChat: Search results:', { count: similarRecords.length });
-      
-      if (!Array.isArray(similarRecords) || similarRecords.length === 0) {
-        throw new Error('No similar records found.');
-      }
+      // Perform vector search
+      const similarRecords = await performVectorSearch(query, subjectId || undefined);
+      const sources = createSourceReferences(similarRecords);
 
-      console.log('🤖 useChat: Checking Ollama connection...');
-      const ollamaConnected = await ollamaLLMService.checkConnection();
-      console.log('🤖 useChat: Ollama connection status:', ollamaConnected);
-      
-      if (!ollamaConnected) {
-        console.warn('⚠️ useChat: Ollama not available, using fallback');
+      try {
+        // Try to generate LLM response
+        const llmResponse = await generateLLMResponse(query, similarRecords, selectedModel);
         
-        const fallbackResponse = generateEnhancedFallback(query, similarRecords);
-        const sources = similarRecords.map(record => 
-          `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
-        );
-
-        await simulateStreamingResponse(fallbackResponse, sources, setMessages);
+        await simulateStreamingResponse(llmResponse, sources, setMessages);
         
         toast({
-          title: "Response generated (Fallback mode)",
-          description: "Ollama unavailable - showing enhanced analysis.",
-          variant: "default",
+          title: "LLM response generated successfully",
+          description: `Generated analysis using ${selectedModel}`,
         });
         
-      } else {
-        console.log('🤖 useChat: Generating LLM response...');
+      } catch (llmError) {
+        console.error('❌ useChat: LLM generation failed, using fallback:', llmError);
         
-        try {
-          const llmResponse = await ollamaLLMService.generateStructuredResponse(
-            query, 
-            similarRecords, 
-            selectedModel
-          );
-          
-          console.log('✅ useChat: LLM response generated successfully');
-          console.log('📝 useChat: Response length:', llmResponse.length);
-          
-          const sources = similarRecords.map(record => 
-            `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
-          );
-
-          await simulateStreamingResponse(llmResponse, sources, setMessages);
-          
-          toast({
-            title: "LLM response generated successfully",
-            description: `Generated analysis using ${selectedModel}`,
-          });
-          
-        } catch (llmError) {
-          console.error('❌ useChat: LLM generation failed, using fallback:', llmError);
-          
-          const fallbackResponse = generateEnhancedFallback(query, similarRecords);
-          const sources = similarRecords.map(record => 
-            `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
-          );
-
-          await simulateStreamingResponse(fallbackResponse, sources, setMessages);
-          
-          toast({
-            title: "Response generated (LLM fallback)",
-            description: "LLM service error - showing enhanced analysis.",
-            variant: "default",
-          });
-        }
+        // Use fallback generator
+        const fallbackResponse = generateEnhancedFallback(query, similarRecords);
+        
+        await simulateStreamingResponse(fallbackResponse, sources, setMessages);
+        
+        const isOllamaError = llmError instanceof Error && llmError.message.includes('Ollama not available');
+        
+        toast({
+          title: isOllamaError ? "Response generated (Fallback mode)" : "Response generated (LLM fallback)",
+          description: isOllamaError ? "Ollama unavailable - showing enhanced analysis." : "LLM service error - showing enhanced analysis.",
+          variant: "default",
+        });
       }
 
     } catch (error) {
