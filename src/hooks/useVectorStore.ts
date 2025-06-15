@@ -21,20 +21,22 @@ export const useVectorStore = () => {
 
   const checkBackendConnection = useCallback(async () => {
     try {
-      console.log('useVectorStore: Checking backend connection...');
+      console.log('🔌 useVectorStore: Checking backend connection...');
       const connected = await backendVectorService.checkConnection();
+      console.log('🔌 useVectorStore: Connection result:', connected);
+      
       setIsBackendConnected(connected);
       
       if (connected) {
-        console.log('useVectorStore: Backend connected, checking for existing data...');
+        console.log('✅ useVectorStore: Backend connected, checking for existing data...');
         
         // Check if there's existing vectorized data
         try {
           const stats = await backendVectorService.getStats();
-          console.log('useVectorStore: Stats received:', stats);
+          console.log('📊 useVectorStore: Stats received:', stats);
           
           if (stats.total_vectors > 0) {
-            console.log(`useVectorStore: Found ${stats.total_vectors} existing vectors, setting store as ready`);
+            console.log(`✅ useVectorStore: Found ${stats.total_vectors} existing vectors, setting store as ready`);
             setIsVectorStoreReady(true);
             setVectorizedCount(stats.total_vectors);
             
@@ -43,12 +45,12 @@ export const useVectorStore = () => {
               description: `Found ${stats.total_vectors} vectorized records ready for search`,
             });
           } else {
-            console.log('useVectorStore: No vectors found in backend store');
+            console.log('ℹ️ useVectorStore: No vectors found in backend store');
             setIsVectorStoreReady(false);
             setVectorizedCount(0);
           }
         } catch (statsError) {
-          console.log('useVectorStore: Could not get stats, assuming no existing data:', statsError);
+          console.log('⚠️ useVectorStore: Could not get stats, assuming no existing data:', statsError);
           setIsVectorStoreReady(false);
           setVectorizedCount(0);
         }
@@ -58,19 +60,20 @@ export const useVectorStore = () => {
           description: "Successfully connected to the vector service",
         });
       } else {
-        console.log('useVectorStore: Backend connection failed');
+        console.log('❌ useVectorStore: Backend connection failed');
         setIsVectorStoreReady(false);
         setVectorizedCount(0);
         toast({
           title: "Backend connection failed",
-          description: "Could not connect to the vector service. Make sure it's running.",
+          description: "Could not connect to the vector service. Make sure it's running on http://localhost:8000",
           variant: "destructive",
         });
       }
       
+      console.log('🔌 useVectorStore: Final state - connected:', connected, 'vectorStoreReady:', connected ? isVectorStoreReady : false);
       return connected;
     } catch (error) {
-      console.error('useVectorStore: Connection check error:', error);
+      console.error('❌ useVectorStore: Connection check error:', error);
       setIsBackendConnected(false);
       setIsVectorStoreReady(false);
       setVectorizedCount(0);

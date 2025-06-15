@@ -77,14 +77,15 @@ export const useChat = () => {
       return;
     }
 
-    console.log('useChat: Starting message send process...');
-    console.log('useChat: Initial state - isBackendConnected:', isBackendConnected);
-    console.log('useChat: Initial state - isVectorStoreReady:', isVectorStoreReady);
+    console.log('🚀 useChat: Starting message send process...');
+    console.log('🚀 useChat: Current state - isBackendConnected:', isBackendConnected, 'isVectorStoreReady:', isVectorStoreReady);
 
-    // First ensure backend connection and vector store readiness
-    if (!isBackendConnected || !isVectorStoreReady) {
-      console.log('useChat: Backend or vector store not ready, attempting connection check...');
+    // Check connection state and refresh if needed
+    if (!isBackendConnected) {
+      console.log('🔄 useChat: Backend not connected, attempting connection check...');
       const connected = await checkBackendConnection();
+      console.log('🔄 useChat: Connection check result:', connected);
+      
       if (!connected) {
         toast({
           title: "Backend not connected",
@@ -94,12 +95,13 @@ export const useChat = () => {
         return;
       }
       
-      // After connection check, wait a moment for state to update
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('useChat: After connection check wait period');
+      // Give some time for the state to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    // Check final state before proceeding
+    // Final state check with current values from the hook
+    console.log('🔍 useChat: Final state check - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
+
     if (!isBackendConnected) {
       toast({
         title: "Backend not connected",
@@ -129,7 +131,7 @@ export const useChat = () => {
     setIsStreaming(true);
 
     try {
-      console.log('useChat: Performing backend vector search for query:', query);
+      console.log('🔍 useChat: Performing backend vector search for query:', query);
       
       // Perform backend vector search with subject filter if specified
       const similarRecords = await searchSimilar(query, 5, subjectId || undefined);
@@ -138,7 +140,7 @@ export const useChat = () => {
         throw new Error('No similar records found in the backend vector store');
       }
 
-      console.log(`useChat: Found ${similarRecords.length} similar records from backend`);
+      console.log(`✅ useChat: Found ${similarRecords.length} similar records from backend`);
       
       // Generate response based on similar records
       const responseText = await generateResponse(query, similarRecords);
@@ -155,7 +157,7 @@ export const useChat = () => {
         description: `Found ${similarRecords.length} similar records using backend vector search`,
       });
     } catch (error) {
-      console.error('useChat: Chat error:', error);
+      console.error('❌ useChat: Chat error:', error);
       toast({
         title: "Error generating response",
         description: error instanceof Error ? error.message : "Backend service error occurred",
