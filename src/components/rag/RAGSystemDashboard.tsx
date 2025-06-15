@@ -14,9 +14,21 @@ interface MimicRecord {
   cleaned_text: string;
 }
 
-export const RAGSystemDashboard = () => {
-  const [activeTab, setActiveTab] = useState("upload");
+interface RAGSystemDashboardProps {
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+}
+
+export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }: RAGSystemDashboardProps) => {
+  const [internalActiveTab, setInternalActiveTab] = useState("upload");
   const [uploadedData, setUploadedData] = useState<MimicRecord[]>([]);
+
+  const activeTab = externalActiveTab || internalActiveTab;
+
+  const handleTabChange = (tab: string) => {
+    setInternalActiveTab(tab);
+    onTabChange?.(tab);
+  };
 
   return (
     <div className="flex-1 p-6">
@@ -27,7 +39,7 @@ export const RAGSystemDashboard = () => {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="upload">Data Upload</TabsTrigger>
           <TabsTrigger value="query">Query System</TabsTrigger>
