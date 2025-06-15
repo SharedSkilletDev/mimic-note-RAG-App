@@ -10,7 +10,7 @@ export const useVectorStore = () => {
   const {
     isBackendConnected,
     backendUrl,
-    checkBackendConnection,
+    checkBackendConnection: baseCheckConnection,
     updateBackendUrl,
   } = useBackendConnection();
 
@@ -28,51 +28,119 @@ export const useVectorStore = () => {
     vectorizeData: performVectorization,
   } = useVectorization();
 
-  const { searchSimilar } = useVectorSearch();
+  const { searchSimilar: baseSearchSimilar } = useVectorSearch();
 
   const { clearVectorStore: performClearVectorStore, getVectorStoreStats } = useVectorStoreOperations();
 
-  // Enhanced checkBackendConnection that also checks for existing data
-  const enhancedCheckBackendConnection = useCallback(async () => {
-    const connected = await checkBackendConnection();
+  // Enhanced connection check with proper state management
+  const checkBackendConnection = useCallback(async () => {
+    console.log('🔌 useVectorStore: Starting enhanced connection check...');
     
-    if (connected) {
-      await checkExistingData();
-    } else {
+    try {
+      // First check backend connectivity
+      const connected = await baseCheckConnection();
+      console.log('🔌 useVectorStore: Base connection result:', connected);
+      
+      if (connected) {
+        // If connected, check for existing vectorized data
+        console.log('✅ useVectorStore: Backend connected, checking existing data...');
+        await checkExistingData();
+        console.log('📊 useVectorStore: Data check complete - vectorStore ready:', isVectorStoreReady);
+      } else {
+        // If not connected, reset vector store state
+        console.log('❌ useVectorStore: Backend not connected, resetting state...');
+        resetVectorStoreState();
+      }
+      
+      return connected;
+    } catch (error) {
+      console.error('❌ useVectorStore: Connection check failed:', error);
       resetVectorStoreState();
+      return false;
     }
-    
-    console.log('🔌 useVectorStore: Final state - connected:', connected, 'vectorStoreReady:', connected ? isVectorStoreReady : false);
-    return connected;
-  }, [checkBackendConnection, checkExistingData, resetVectorStoreState, isVectorStoreReady]);
+  }, [baseCheckConnection, checkExistingData, resetVectorStoreState, isVectorStoreReady]);
 
-  // Enhanced updateBackendUrl that resets state
+  // Enhanced URL update with state reset
   const enhancedUpdateBackendUrl = useCallback((url: string) => {
+    console.log('🔧 useVectorStore: Updating backend URL to:', url);
     updateBackendUrl(url);
     resetVectorStoreState();
   }, [updateBackendUrl, resetVectorStoreState]);
 
-  // Vectorize data with state management
+  // Enhanced vectorization with proper state management
   const vectorizeData = useCallback(async (data: any[]) => {
-    await performVectorization(
-      data,
-      isBackendConnected,
-      (count) => updateVectorStoreState(true, count),
-      () => updateVectorStoreState(false, 0)
-    );
+    console.log('📊 useVectorStore: Starting vectorization for', data.length, 'records');
+    
+    if (!isBackendConnected) {
+      throw new Error('Backend not connected - cannot vectorize data');
+    }
+
+    try {
+      await performVectorization(
+        data,
+        isBackendConnected,
+        (count) => {
+          console.log('✅ useVectorStore: Vectorization success, updating state with count:', count);
+          updateVectorStoreState(true, count);
+        },
+        () => {
+          console.log('❌ useVectorStore: Vectorization failed, resetting state');
+          updateVectorStoreState(false, 0);
+        }
+      );
+    } catch (error) {
+      console.error('❌ useVectorStore: Vectorization error:', error);
+      updateVectorStoreState(false, 0);
+      throw error;
+    }
   }, [performVectorization, isBackendConnected, updateVectorStoreState]);
 
-  // Clear vector store with state reset
+  // Enhanced search with validation
+  const searchSimilar = useCallback(async (query: string, topK = 5, subjectId?: string) => {
+    console.log('🔍 useVectorStore: Starting search validation...');
+    console.log('🔍 useVectorStore: Current state - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
+    
+    if (!isBackendConnected) {
+      console.error('❌ useVectorStore: Search blocked - backend not connected');
+      throw new Error('Backend service not connected');
+    }
+
+    if (!isVectorStoreReady) {
+      console.error('❌ useVectorStore: Search blocked - vector store not ready');
+      throw new Error('Vector store not ready - please vectorize data first');
+    }
+
+    console.log('✅ useVectorStore: Validation passed, performing search...');
+    
+    try {
+      const results = await baseSearchSimilar(query, topK, subjectId, isVectorStoreReady);
+      console.log('✅ useVectorStore: Search completed successfully with', results.length, 'results');
+      return results;
+    } catch (error) {
+      console.error('❌ useVectorStore: Search failed:', error);
+      throw error;
+    }
+  }, [baseSearchSimilar, isBackendConnected, isVectorStoreReady]);
+
+  // Enhanced clear with state reset
   const clearVectorStore = useCallback(async () => {
-    await performClearVectorStore(() => {
-      updateVectorStoreState(false, 0);
-    });
+    console.log('🧹 useVectorStore: Clearing vector store...');
+    
+    try {
+      await performClearVectorStore(() => {
+        console.log('✅ useVectorStore: Clear completed, resetting state');
+        updateVectorStoreState(false, 0);
+      });
+    } catch (error) {
+      console.error('❌ useVectorStore: Clear failed:', error);
+      throw error;
+    }
   }, [performClearVectorStore, updateVectorStoreState]);
 
-  // Enhanced searchSimilar with ready state check
-  const enhancedSearchSimilar = useCallback(async (query: string, topK = 5, subjectId?: string) => {
-    return await searchSimilar(query, topK, subjectId, isVectorStoreReady);
-  }, [searchSimilar, isVectorStoreReady]);
+  // Log state changes for debugging
+  useEffect(() => {
+    console.log('📊 useVectorStore: State update - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady, 'count:', vectorizedCount);
+  }, [isBackendConnected, isVectorStoreReady, vectorizedCount]);
 
   return {
     isVectorizing,
@@ -81,10 +149,10 @@ export const useVectorStore = () => {
     vectorizedCount,
     isBackendConnected,
     backendUrl,
-    checkBackendConnection: enhancedCheckBackendConnection,
+    checkBackendConnection,
     updateBackendUrl: enhancedUpdateBackendUrl,
     vectorizeData,
-    searchSimilar: enhancedSearchSimilar,
+    searchSimilar,
     clearVectorStore,
     getVectorStoreStats
   };

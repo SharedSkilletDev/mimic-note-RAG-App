@@ -15,7 +15,12 @@ export const useChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const { toast } = useToast();
-  const { searchSimilar, isVectorStoreReady, isBackendConnected, checkBackendConnection } = useVectorStore();
+  const { 
+    searchSimilar, 
+    isVectorStoreReady, 
+    isBackendConnected, 
+    checkBackendConnection 
+  } = useVectorStore();
 
   const generateResponse = async (query: string, similarRecords: any[]) => {
     // Create context from similar records with similarity scores
@@ -78,48 +83,40 @@ export const useChat = () => {
     }
 
     console.log('🚀 useChat: Starting message send process...');
-    console.log('🚀 useChat: Current state - isBackendConnected:', isBackendConnected, 'isVectorStoreReady:', isVectorStoreReady);
+    console.log('🚀 useChat: Initial state check - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
 
-    // Check connection state and refresh if needed
+    // Validate basic requirements before proceeding
     if (!isBackendConnected) {
-      console.log('🔄 useChat: Backend not connected, attempting connection check...');
-      const connected = await checkBackendConnection();
-      console.log('🔄 useChat: Connection check result:', connected);
+      console.log('❌ useChat: Backend not connected, attempting refresh...');
+      const refreshResult = await checkBackendConnection();
+      console.log('🔄 useChat: Refresh result:', refreshResult);
       
-      if (!connected) {
+      if (!refreshResult) {
         toast({
-          title: "Backend not connected",
-          description: "Could not connect to the backend service. Please ensure it's running on http://localhost:8000",
+          title: "Backend connection failed",
+          description: "Could not connect to the backend service. Please check the Vector Store tab and ensure the service is running.",
           variant: "destructive",
         });
         return;
       }
-      
-      // Give some time for the state to update
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Wait for state to update after successful connection
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    // Final state check with current values from the hook
-    console.log('🔍 useChat: Final state check - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
-
-    if (!isBackendConnected) {
-      toast({
-        title: "Backend not connected",
-        description: "Backend connection failed. Please check the Vector Store tab.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Re-check vector store readiness after connection refresh
+    console.log('🔍 useChat: Post-connection state - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
 
     if (!isVectorStoreReady) {
       toast({
         title: "Vector store not ready",
-        description: "Please vectorize your data first in the Vector Store tab",
+        description: "Please ensure your data is vectorized in the Vector Store tab before querying.",
         variant: "destructive",
       });
       return;
     }
 
+    // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -131,17 +128,17 @@ export const useChat = () => {
     setIsStreaming(true);
 
     try {
-      console.log('🔍 useChat: Performing backend vector search for query:', query);
+      console.log('🔍 useChat: Performing vector search for query:', query);
+      console.log('🔍 useChat: Subject filter:', subjectId || 'none');
       
-      // Perform backend vector search with subject filter if specified
+      // Perform vector search with error handling
       const similarRecords = await searchSimilar(query, 5, subjectId || undefined);
+      console.log('📊 useChat: Search results:', { count: similarRecords.length, records: similarRecords });
       
-      if (similarRecords.length === 0) {
-        throw new Error('No similar records found in the backend vector store');
+      if (!Array.isArray(similarRecords) || similarRecords.length === 0) {
+        throw new Error('No similar records found. The vector store may be empty or the search failed.');
       }
 
-      console.log(`✅ useChat: Found ${similarRecords.length} similar records from backend`);
-      
       // Generate response based on similar records
       const responseText = await generateResponse(query, similarRecords);
       
@@ -153,14 +150,20 @@ export const useChat = () => {
       await simulateStreamingResponse(responseText, sources);
       
       toast({
-        title: "Response generated",
-        description: `Found ${similarRecords.length} similar records using backend vector search`,
+        title: "Response generated successfully",
+        description: `Found ${similarRecords.length} relevant records with similarity scores`,
       });
+
     } catch (error) {
-      console.error('❌ useChat: Chat error:', error);
+      console.error('❌ useChat: Search/response error:', error);
+      
+      // Remove the user message if we failed to process it
+      setMessages(prev => prev.filter(msg => msg.role !== 'user' || msg.content !== query));
+      
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       toast({
-        title: "Error generating response",
-        description: error instanceof Error ? error.message : "Backend service error occurred",
+        title: "Query failed",
+        description: `Failed to search vector store: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {

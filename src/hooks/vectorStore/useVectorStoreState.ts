@@ -9,13 +9,14 @@ export const useVectorStoreState = () => {
   const { toast } = useToast();
 
   const checkExistingData = useCallback(async () => {
+    console.log('📊 useVectorStoreState: Checking for existing vectorized data...');
+    
     try {
-      console.log('✅ useVectorStoreState: Checking for existing data...');
       const stats = await backendVectorService.getStats();
-      console.log('📊 useVectorStoreState: Stats received:', stats);
+      console.log('📊 useVectorStoreState: Received stats:', stats);
       
-      if (stats.total_vectors > 0) {
-        console.log(`✅ useVectorStoreState: Found ${stats.total_vectors} existing vectors, setting store as ready`);
+      if (stats && stats.total_vectors > 0) {
+        console.log(`✅ useVectorStoreState: Found ${stats.total_vectors} existing vectors`);
         setIsVectorStoreReady(true);
         setVectorizedCount(stats.total_vectors);
         
@@ -23,24 +24,30 @@ export const useVectorStoreState = () => {
           title: "Vector store ready",
           description: `Found ${stats.total_vectors} vectorized records ready for search`,
         });
+        
+        return true;
       } else {
-        console.log('ℹ️ useVectorStoreState: No vectors found in backend store');
+        console.log('ℹ️ useVectorStoreState: No existing vectors found');
         setIsVectorStoreReady(false);
         setVectorizedCount(0);
+        return false;
       }
-    } catch (statsError) {
-      console.log('⚠️ useVectorStoreState: Could not get stats, assuming no existing data:', statsError);
+    } catch (error) {
+      console.error('⚠️ useVectorStoreState: Failed to check existing data:', error);
       setIsVectorStoreReady(false);
       setVectorizedCount(0);
+      return false;
     }
   }, [toast]);
 
   const resetVectorStoreState = useCallback(() => {
+    console.log('🔄 useVectorStoreState: Resetting vector store state');
     setIsVectorStoreReady(false);
     setVectorizedCount(0);
   }, []);
 
   const updateVectorStoreState = useCallback((ready: boolean, count: number) => {
+    console.log('🔄 useVectorStoreState: Updating state - ready:', ready, 'count:', count);
     setIsVectorStoreReady(ready);
     setVectorizedCount(count);
   }, []);

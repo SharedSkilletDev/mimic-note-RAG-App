@@ -35,17 +35,33 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   
   const { toast } = useToast();
   const { messages, isStreaming, sendMessage, clearConversation } = useChat();
-  const { checkBackendConnection, isBackendConnected, isVectorStoreReady } = useVectorStore();
+  const { 
+    checkBackendConnection, 
+    isBackendConnected, 
+    isVectorStoreReady,
+    vectorizedCount 
+  } = useVectorStore();
 
-  // Check backend connection when component mounts
+  // Enhanced connection check on mount
   useEffect(() => {
-    const checkConnection = async () => {
-      console.log('QueryTab: Checking backend connection on mount...');
-      await checkBackendConnection();
+    const initializeConnection = async () => {
+      console.log('QueryTab: Initializing connection on mount...');
+      
+      try {
+        await checkBackendConnection();
+        console.log('QueryTab: Connection check completed');
+      } catch (error) {
+        console.error('QueryTab: Connection check failed:', error);
+        toast({
+          title: "Connection check failed",
+          description: "Could not verify backend connection. Please check the Vector Store tab.",
+          variant: "destructive",
+        });
+      }
     };
     
-    checkConnection();
-  }, [checkBackendConnection]);
+    initializeConnection();
+  }, [checkBackendConnection, toast]);
 
   // Get unique subject IDs from uploaded data
   const availableSubjectIds = React.useMemo(() => {
@@ -54,20 +70,38 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   }, [uploadedData]);
 
   const handleSendMessage = async () => {
-    // Double-check connection before sending message
+    console.log('QueryTab: Send message requested');
+    console.log('QueryTab: Current state - backend:', isBackendConnected, 'vectorStore:', isVectorStoreReady);
+    
+    // Pre-flight validation with user feedback
     if (!isBackendConnected) {
-      console.log('QueryTab: Backend not connected, attempting to reconnect...');
-      const connected = await checkBackendConnection();
-      if (!connected) {
-        toast({
-          title: "Backend connection failed",
-          description: "Please ensure the backend service is running and try again",
-          variant: "destructive",
-        });
-        return;
-      }
+      toast({
+        title: "Backend not connected", 
+        description: "Please connect to the backend service in the Vector Store tab first",
+        variant: "destructive",
+      });
+      return;
     }
 
+    if (!isVectorStoreReady) {
+      toast({
+        title: "Vector store not ready",
+        description: `Please vectorize your data first. Current status: ${vectorizedCount} vectors available`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!query.trim()) {
+      toast({
+        title: "Empty query",
+        description: "Please enter a question or query",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('QueryTab: Pre-flight validation passed, sending message...');
     await sendMessage(query, subjectId, availableSubjectIds, selectedModel);
     setQuery('');
   };
@@ -85,6 +119,16 @@ export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Status indicators for debugging */}
+      <div className="flex gap-4 text-sm text-muted-foreground">
+        <span className={`flex items-center gap-1 ${isBackendConnected ? 'text-green-600' : 'text-red-600'}`}>
+          Backend: {isBackendConnected ? 'Connected' : 'Disconnected'}
+        </span>
+        <span className={`flex items-center gap-1 ${isVectorStoreReady ? 'text-green-600' : 'text-yellow-600'}`}>
+          Vector Store: {isVectorStoreReady ? `Ready (${vectorizedCount} vectors)` : 'Not Ready'}
+        </span>
+      </div>
+
       <ConfigurationPanel
         selectedModel={selectedModel}
         setSelectedModel={setSelectedModel}

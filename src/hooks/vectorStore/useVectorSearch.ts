@@ -12,25 +12,33 @@ export const useVectorSearch = () => {
     subjectId?: string,
     isVectorStoreReady?: boolean
   ) => {
+    console.log('🔍 useVectorSearch: Starting search...');
+    console.log('🔍 useVectorSearch: Query:', query);
+    console.log('🔍 useVectorSearch: TopK:', topK);
+    console.log('🔍 useVectorSearch: SubjectID:', subjectId);
+    console.log('🔍 useVectorSearch: VectorStore ready:', isVectorStoreReady);
+    
     try {
-      console.log(`useVectorSearch: Searching backend for: "${query}"`);
-      console.log(`useVectorSearch: isVectorStoreReady = ${isVectorStoreReady}`);
-      
       const result = await backendVectorService.searchSimilar(query, topK, subjectId);
+      console.log('📊 useVectorSearch: Raw backend result:', result);
       
-      if (result.success) {
-        console.log(`useVectorSearch: Backend search returned ${result.results.length} results`);
+      if (result && result.success && Array.isArray(result.results)) {
+        console.log(`✅ useVectorSearch: Search successful - ${result.results.length} results found`);
         return result.results;
       } else {
-        throw new Error('Search failed on backend');
+        console.error('❌ useVectorSearch: Invalid result format:', result);
+        throw new Error('Invalid search result format from backend');
       }
     } catch (error) {
-      console.error('useVectorSearch: Backend vector search failed:', error);
+      console.error('❌ useVectorSearch: Search failed:', error);
+      
       toast({
-        title: "Search failed",
-        description: "Could not perform vector search. Check backend connection.",
+        title: "Vector search failed",
+        description: `Could not perform vector search: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
+      
+      // Return empty array instead of throwing to prevent cascading errors
       return [];
     }
   }, [toast]);
