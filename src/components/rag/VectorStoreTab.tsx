@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Database, Zap, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Database, Zap, CheckCircle, AlertCircle, Loader2, Server, Wifi, WifiOff } from "lucide-react";
 import { useVectorStore } from "@/hooks/useVectorStore";
 
 interface MimicRecord {
@@ -24,26 +25,107 @@ export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
     vectorizationProgress,
     isVectorStoreReady,
     vectorizedCount,
-    initializeVectorStore,
+    isBackendConnected,
+    backendUrl,
+    checkBackendConnection,
+    updateBackendUrl,
     vectorizeData,
-    clearVectorStore
+    clearVectorStore,
+    getVectorStoreStats
   } = useVectorStore();
 
-  const handleInitialize = async () => {
-    try {
-      await initializeVectorStore();
-    } catch (error) {
-      console.error('Failed to initialize vector store:', error);
+  const [localBackendUrl, setLocalBackendUrl] = useState(backendUrl);
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    // Check connection on mount
+    checkBackendConnection();
+  }, [checkBackendConnection]);
+
+  useEffect(() => {
+    // Load stats when vector store is ready
+    if (isVectorStoreReady) {
+      loadStats();
     }
+  }, [isVectorStoreReady]);
+
+  const loadStats = async () => {
+    const vectorStats = await getVectorStoreStats();
+    setStats(vectorStats);
+  };
+
+  const handleUrlUpdate = () => {
+    updateBackendUrl(localBackendUrl);
   };
 
   const handleVectorizeData = async () => {
     if (uploadedData.length === 0) return;
     await vectorizeData(uploadedData);
+    if (isVectorStoreReady) {
+      loadStats();
+    }
+  };
+
+  const handleClearStore = async () => {
+    await clearVectorStore();
+    setStats(null);
   };
 
   return (
     <div className="space-y-6">
+      {/* Backend Connection Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="h-5 w-5" />
+            Backend Service Configuration
+          </CardTitle>
+          <CardDescription>
+            Connect to your local backend service running Nomic embedding and FAISS vector store
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Backend URL</label>
+              <Input
+                placeholder="http://localhost:8000"
+                value={localBackendUrl}
+                onChange={(e) => setLocalBackendUrl(e.target.value)}
+              />
+            </div>
+            <Button onClick={handleUrlUpdate} variant="outline">
+              Update
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex items-center gap-3">
+              {isBackendConnected ? (
+                <Wifi className="h-5 w-5 text-green-600" />
+              ) : (
+                <WifiOff className="h-5 w-5 text-red-600" />
+              )}
+              <div>
+                <h4 className="font-medium">
+                  {isBackendConnected ? 'Connected' : 'Disconnected'}
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  {isBackendConnected 
+                    ? 'Backend service is ready' 
+                    : 'Cannot reach backend service'}
+                </p>
+              </div>
+            </div>
+            <Button onClick={checkBackendConnection} variant="outline">
+              <Zap className="h-4 w-4 mr-2" />
+              Test Connection
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Vector Store Management Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -51,24 +133,20 @@ export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
             Vector Store Management
           </CardTitle>
           <CardDescription>
-            Convert your clinical data into searchable vector embeddings using local browser-based models
+            Convert your clinical data into searchable vector embeddings using Nomic embedding
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div>
-              <h4 className="font-medium">Embedding Model Status</h4>
-              <p className="text-sm text-muted-foreground">
-                Using Xenova/all-MiniLM-L6-v2 (runs in browser)
+          {!isBackendConnected && (
+            <div className="flex items-center gap-2 p-4 bg-red-50 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <p className="text-red-800">
+                Backend service not connected. Please configure and test the connection above.
               </p>
             </div>
-            <Button onClick={handleInitialize} variant="outline">
-              <Zap className="h-4 w-4 mr-2" />
-              Initialize Model
-            </Button>
-          </div>
+          )}
 
-          {uploadedData.length > 0 && (
+          {uploadedData.length > 0 && isBackendConnected && (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
                 <div>
@@ -79,7 +157,7 @@ export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
                 </div>
                 <Button 
                   onClick={handleVectorizeData}
-                  disabled={isVectorizing || uploadedData.length === 0}
+                  disabled={isVectorizing || uploadedData.length === 0 || !isBackendConnected}
                 >
                   {isVectorizing ? (
                     <>
@@ -106,17 +184,40 @@ export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
               )}
 
               {isVectorStoreReady && (
-                <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <div className="flex-1">
-                    <p className="font-medium text-green-800">Vector Store Ready</p>
-                    <p className="text-sm text-green-700">
-                      {vectorizedCount} records vectorized and ready for search
-                    </p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="font-medium text-green-800">Vector Store Ready</p>
+                      <p className="text-sm text-green-700">
+                        {vectorizedCount} records vectorized and ready for search
+                      </p>
+                    </div>
+                    <Button variant="outline" onClick={handleClearStore}>
+                      Clear Store
+                    </Button>
                   </div>
-                  <Button variant="outline" onClick={clearVectorStore}>
-                    Clear Store
-                  </Button>
+
+                  {stats && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">Total Vectors</p>
+                        <p className="text-2xl font-bold">{stats.total_vectors}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">Vector Dimension</p>
+                        <p className="text-2xl font-bold">{stats.vector_dimension}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">Unique Subjects</p>
+                        <p className="text-2xl font-bold">{stats.unique_subjects}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">Store Size</p>
+                        <p className="text-2xl font-bold">{stats.store_size_mb}MB</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -133,43 +234,44 @@ export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
         </CardContent>
       </Card>
 
+      {/* Information Card */}
       <Card>
         <CardHeader>
-          <CardTitle>How Vector Search Works</CardTitle>
+          <CardTitle>Backend Vector Search Architecture</CardTitle>
           <CardDescription>
-            Understanding the local vector search implementation
+            Understanding the backend implementation with Nomic embedding and FAISS
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-3">
-              <h4 className="font-medium">1. Text Embedding</h4>
+              <h4 className="font-medium">1. Nomic Embedding</h4>
               <p className="text-sm text-muted-foreground">
-                Each clinical note is converted into a high-dimensional vector using the all-MiniLM-L6-v2 model, which runs entirely in your browser.
+                Your backend uses Nomic's high-performance embedding model to convert clinical text into dense vector representations with superior semantic understanding.
               </p>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium">2. Similarity Search</h4>
+              <h4 className="font-medium">2. FAISS Vector Store</h4>
               <p className="text-sm text-muted-foreground">
-                When you ask a question, it's also converted to a vector and compared against all stored vectors using cosine similarity.
+                Facebook AI Similarity Search (FAISS) provides fast and efficient similarity search capabilities, optimized for large-scale vector operations.
               </p>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium">3. Context Retrieval</h4>
+              <h4 className="font-medium">3. Scalable Architecture</h4>
               <p className="text-sm text-muted-foreground">
-                The most similar clinical notes are retrieved and used as context for generating relevant responses about your data.
+                This backend approach can handle much larger datasets and provides faster search performance compared to browser-based solutions.
               </p>
             </div>
 
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h4 className="font-medium text-green-800 mb-2">Privacy Benefits</h4>
-              <ul className="text-sm text-green-700 space-y-1">
-                <li>• All processing happens locally in your browser</li>
-                <li>• No data sent to external servers</li>
-                <li>• Embeddings stored in browser memory only</li>
-                <li>• HIPAA compliant by design</li>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-800 mb-2">Backend Requirements</h4>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• Python backend with FastAPI or Flask</li>
+                <li>• Nomic embedding model installed</li>
+                <li>• FAISS library for vector storage</li>
+                <li>• Endpoints: /health, /vectorize, /search, /stats, /clear</li>
               </ul>
             </div>
           </div>

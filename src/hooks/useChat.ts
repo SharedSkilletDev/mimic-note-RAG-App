@@ -15,20 +15,24 @@ export const useChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const { toast } = useToast();
-  const { searchSimilar, isVectorStoreReady } = useVectorStore();
+  const { searchSimilar, isVectorStoreReady, isBackendConnected } = useVectorStore();
 
   const generateResponse = async (query: string, similarRecords: any[]) => {
-    // Create context from similar records
-    const context = similarRecords.map(record => 
-      `Subject ${record.subject_id} (${record.charttime}): ${record.cleaned_text.substring(0, 500)}...`
+    // Create context from similar records with similarity scores
+    const context = similarRecords.map((record, index) => 
+      `[Similarity: ${(record.similarity_score * 100).toFixed(1)}%] Subject ${record.subject_id} (${record.charttime}): ${record.cleaned_text.substring(0, 500)}...`
     ).join('\n\n');
 
-    // Generate response based on context and query
+    // Generate more informative responses based on context and similarity scores
+    const topSimilarity = similarRecords[0]?.similarity_score || 0;
     const responses = [
-      `Based on the clinical records, I found ${similarRecords.length} relevant cases related to your query: "${query}".`,
-      `Key findings from the most similar cases:\n\n${context.substring(0, 800)}...`,
-      `The analysis shows patterns across ${similarRecords.length} patient records. Would you like me to focus on specific aspects?`,
-      `From the MIMIC IV data, I've identified relevant clinical patterns. The most similar case involves Subject ${similarRecords[0]?.subject_id}.`
+      `Based on the clinical records, I found ${similarRecords.length} relevant cases related to your query: "${query}". The most similar case has a ${(topSimilarity * 100).toFixed(1)}% similarity match.\n\n${context.substring(0, 1200)}...`,
+      
+      `Analysis of ${similarRecords.length} clinically similar cases:\n\nTop match (${(topSimilarity * 100).toFixed(1)}% similarity): Subject ${similarRecords[0]?.subject_id}\n\n${context.substring(0, 1000)}...\n\nWould you like me to focus on specific clinical aspects or patterns?`,
+      
+      `From the MIMIC IV data, I've identified ${similarRecords.length} relevant patient records with similarity scores ranging from ${(topSimilarity * 100).toFixed(1)}% to ${((similarRecords[similarRecords.length - 1]?.similarity_score || 0) * 100).toFixed(1)}%.\n\nKey clinical findings:\n${context.substring(0, 1000)}...`,
+      
+      `Vector search results for "${query}":\n\n${similarRecords.length} matching clinical records found. The analysis shows patterns across multiple patients with the highest similarity being ${(topSimilarity * 100).toFixed(1)}%.\n\n${context.substring(0, 1200)}...`
     ];
     
     return responses[Math.floor(Math.random() * responses.length)];
@@ -50,7 +54,7 @@ export const useChat = () => {
     
     // Simulate streaming by adding words gradually
     for (let i = 0; i < words.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50)); // Faster streaming
       setMessages(prev => prev.map(msg => 
         msg.id === assistantMessageId 
           ? { ...msg, content: words.slice(0, i + 1).join(' ') }
@@ -68,6 +72,15 @@ export const useChat = () => {
     if (!query.trim()) {
       toast({
         title: "Please enter a message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isBackendConnected) {
+      toast({
+        title: "Backend not connected",
+        description: "Please connect to the backend service first in the Vector Store tab",
         variant: "destructive",
       });
       return;
@@ -93,36 +106,36 @@ export const useChat = () => {
     setIsStreaming(true);
 
     try {
-      console.log('Performing vector search for query:', query);
+      console.log('Performing backend vector search for query:', query);
       
-      // Perform vector search
-      const similarRecords = await searchSimilar(query, 5);
+      // Perform backend vector search with subject filter if specified
+      const similarRecords = await searchSimilar(query, 5, subjectId || undefined);
       
       if (similarRecords.length === 0) {
-        throw new Error('No similar records found');
+        throw new Error('No similar records found in the backend vector store');
       }
 
-      console.log(`Found ${similarRecords.length} similar records`);
+      console.log(`Found ${similarRecords.length} similar records from backend`);
       
       // Generate response based on similar records
       const responseText = await generateResponse(query, similarRecords);
       
-      // Create sources from similar records
+      // Create sources from similar records with similarity scores
       const sources = similarRecords.map(record => 
-        `Subject ${record.subject_id} - ${record.note_id}`
+        `Subject ${record.subject_id} - ${record.note_id} (${(record.similarity_score * 100).toFixed(1)}% match)`
       );
 
       await simulateStreamingResponse(responseText, sources);
       
       toast({
         title: "Response generated",
-        description: `Using model: ${selectedModel} with ${similarRecords.length} similar records`,
+        description: `Found ${similarRecords.length} similar records using backend vector search`,
       });
     } catch (error) {
       console.error('Chat error:', error);
       toast({
         title: "Error generating response",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
+        description: error instanceof Error ? error.message : "Backend service error occurred",
         variant: "destructive",
       });
     } finally {

@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { vectorSearchService } from '@/services/vectorSearch';
+import { backendVectorService } from '@/services/backendVectorService';
 
 interface MimicRecord {
   note_id: string;
@@ -16,35 +16,75 @@ export const useVectorStore = () => {
   const [vectorizationProgress, setVectorizationProgress] = useState(0);
   const [isVectorStoreReady, setIsVectorStoreReady] = useState(false);
   const [vectorizedCount, setVectorizedCount] = useState(0);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [backendUrl, setBackendUrl] = useState('http://localhost:8000');
   const { toast } = useToast();
 
-  const initializeVectorStore = useCallback(async () => {
+  const checkBackendConnection = useCallback(async () => {
     try {
-      await vectorSearchService.initialize();
-      toast({
-        title: "Vector store initialized",
-        description: "Ready to process embeddings",
-      });
+      const connected = await backendVectorService.checkConnection();
+      setIsBackendConnected(connected);
+      
+      if (connected) {
+        toast({
+          title: "Backend connected",
+          description: "Successfully connected to the vector service",
+        });
+        
+        // Check if there's existing data
+        try {
+          const stats = await backendVectorService.getStats();
+          if (stats.total_vectors > 0) {
+            setIsVectorStoreReady(true);
+            setVectorizedCount(stats.total_vectors);
+          }
+        } catch (error) {
+          console.log('No existing data in vector store');
+        }
+      } else {
+        toast({
+          title: "Backend connection failed",
+          description: "Could not connect to the vector service. Make sure it's running.",
+          variant: "destructive",
+        });
+      }
+      
+      return connected;
     } catch (error) {
-      console.error('Initialization error:', error);
+      console.error('Connection check error:', error);
+      setIsBackendConnected(false);
       toast({
-        title: "Initialization failed",
-        description: "Could not initialize embedding model",
+        title: "Connection error",
+        description: "Failed to check backend connection",
         variant: "destructive",
       });
-      throw error;
+      return false;
     }
   }, [toast]);
 
+  const updateBackendUrl = useCallback((url: string) => {
+    setBackendUrl(url);
+    backendVectorService.setBaseUrl(url);
+    setIsBackendConnected(false);
+  }, []);
+
   const vectorizeData = useCallback(async (data: any[]) => {
-    console.log('=== useVectorStore: Starting vectorization ===');
+    console.log('=== useVectorStore: Starting backend vectorization ===');
     console.log('Input data length:', data?.length || 0);
-    console.log('Sample input:', data?.[0]);
     
     if (!data || data.length === 0) {
       toast({
         title: "No data to vectorize",
         description: "Please upload data first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isBackendConnected) {
+      toast({
+        title: "Backend not connected",
+        description: "Please connect to the backend service first",
         variant: "destructive",
       });
       return;
@@ -56,9 +96,9 @@ export const useVectorStore = () => {
     setVectorizedCount(0);
 
     try {
-      console.log(`Starting vectorization of ${data.length} records`);
+      console.log(`Starting backend vectorization of ${data.length} records`);
       
-      const vectorizedRecords = await vectorSearchService.vectorizeData(
+      const result = await backendVectorService.vectorizeData(
         data,
         (progress) => {
           console.log(`Progress update: ${progress}%`);
@@ -66,77 +106,103 @@ export const useVectorStore = () => {
         }
       );
 
-      console.log(`Vectorization result: ${vectorizedRecords.length} records processed`);
+      console.log(`Vectorization result:`, result);
       
-      // Update state with results
-      const finalCount = vectorizedRecords.length;
-      setVectorizedCount(finalCount);
-      setIsVectorStoreReady(finalCount > 0);
-      
-      if (finalCount > 0) {
+      if (result.success && result.vectorized_count > 0) {
+        setVectorizedCount(result.vectorized_count);
+        setIsVectorStoreReady(true);
+        
         toast({
           title: "Vectorization complete",
-          description: `Successfully vectorized ${finalCount} out of ${data.length} records`,
+          description: `Successfully vectorized ${result.vectorized_count} out of ${data.length} records`,
         });
-        console.log(`✅ Vectorization successful: ${finalCount} records ready for search`);
+        console.log(`✅ Backend vectorization successful: ${result.vectorized_count} records ready for search`);
       } else {
         toast({
           title: "Vectorization failed",
-          description: "No records could be processed. Check console for details.",
+          description: result.message || "No records could be processed. Check backend logs for details.",
           variant: "destructive",
         });
-        console.error('❌ Vectorization failed: No records processed');
+        console.error('❌ Backend vectorization failed:', result.message);
       }
     } catch (error) {
-      console.error('❌ Vectorization error:', error);
+      console.error('❌ Backend vectorization error:', error);
       toast({
         title: "Vectorization failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
+        description: error instanceof Error ? error.message : "Backend service error occurred",
         variant: "destructive",
       });
       setIsVectorStoreReady(false);
       setVectorizedCount(0);
     } finally {
       setIsVectorizing(false);
-      console.log('=== useVectorStore: Vectorization process complete ===');
+      console.log('=== useVectorStore: Backend vectorization process complete ===');
     }
-  }, [toast]);
+  }, [toast, isBackendConnected]);
 
-  const searchSimilar = useCallback(async (query: string, topK = 5) => {
+  const searchSimilar = useCallback(async (query: string, topK = 5, subjectId?: string) => {
     try {
-      console.log(`Searching for: "${query}"`);
-      const results = await vectorSearchService.searchSimilar(query, topK);
-      console.log(`Search returned ${results.length} results`);
-      return results;
+      console.log(`Searching backend for: "${query}"`);
+      const result = await backendVectorService.searchSimilar(query, topK, subjectId);
+      
+      if (result.success) {
+        console.log(`Backend search returned ${result.results.length} results`);
+        return result.results;
+      } else {
+        throw new Error('Search failed on backend');
+      }
     } catch (error) {
-      console.error('Vector search failed:', error);
+      console.error('Backend vector search failed:', error);
       toast({
         title: "Search failed",
-        description: "Could not perform vector search. Ensure data is vectorized first.",
+        description: "Could not perform vector search. Check backend connection.",
         variant: "destructive",
       });
       return [];
     }
   }, [toast]);
 
-  const clearVectorStore = useCallback(() => {
-    vectorSearchService.clearData();
-    setIsVectorStoreReady(false);
-    setVectorizedCount(0);
-    setVectorizationProgress(0);
-    toast({
-      title: "Vector store cleared",
-    });
+  const clearVectorStore = useCallback(async () => {
+    try {
+      await backendVectorService.clearVectorStore();
+      setIsVectorStoreReady(false);
+      setVectorizedCount(0);
+      setVectorizationProgress(0);
+      toast({
+        title: "Vector store cleared",
+        description: "Backend vector store has been cleared",
+      });
+    } catch (error) {
+      console.error('Failed to clear vector store:', error);
+      toast({
+        title: "Clear failed",
+        description: "Could not clear vector store. Check backend connection.",
+        variant: "destructive",
+      });
+    }
   }, [toast]);
+
+  const getVectorStoreStats = useCallback(async () => {
+    try {
+      return await backendVectorService.getStats();
+    } catch (error) {
+      console.error('Failed to get vector store stats:', error);
+      return null;
+    }
+  }, []);
 
   return {
     isVectorizing,
     vectorizationProgress,
     isVectorStoreReady,
     vectorizedCount,
-    initializeVectorStore,
+    isBackendConnected,
+    backendUrl,
+    checkBackendConnection,
+    updateBackendUrl,
     vectorizeData,
     searchSimilar,
-    clearVectorStore
+    clearVectorStore,
+    getVectorStoreStats
   };
 };
