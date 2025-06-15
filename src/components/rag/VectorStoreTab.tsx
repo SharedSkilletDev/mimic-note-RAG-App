@@ -1,64 +1,45 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Database, Play, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Database, Zap, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useVectorStore } from "@/hooks/useVectorStore";
 
-export const VectorStoreTab = () => {
-  const [indexingProgress, setIndexingProgress] = useState(0);
-  const [isIndexing, setIsIndexing] = useState(false);
-  const [indexStatus, setIndexStatus] = useState<'not_started' | 'in_progress' | 'completed' | 'error'>('not_started');
-  const { toast } = useToast();
+interface MimicRecord {
+  note_id: string;
+  subject_id: number;
+  hadm_id: number;
+  charttime: string;
+  cleaned_text: string;
+}
 
-  const startIndexing = async () => {
-    setIsIndexing(true);
-    setIndexStatus('in_progress');
-    setIndexingProgress(0);
+interface VectorStoreTabProps {
+  uploadedData?: MimicRecord[];
+}
 
-    // Simulate indexing process
-    const interval = setInterval(() => {
-      setIndexingProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsIndexing(false);
-          setIndexStatus('completed');
-          toast({
-            title: "Indexing completed",
-            description: "Your clinical notes are now ready for semantic search",
-          });
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 500);
-  };
+export const VectorStoreTab = ({ uploadedData = [] }: VectorStoreTabProps) => {
+  const {
+    isVectorizing,
+    vectorizationProgress,
+    isVectorStoreReady,
+    vectorizedCount,
+    initializeVectorStore,
+    vectorizeData,
+    clearVectorStore
+  } = useVectorStore();
 
-  const getStatusIcon = () => {
-    switch (indexStatus) {
-      case 'completed':
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
-      case 'error':
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
-      case 'in_progress':
-        return <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />;
-      default:
-        return <Database className="h-5 w-5 text-gray-400" />;
+  const handleInitialize = async () => {
+    try {
+      await initializeVectorStore();
+    } catch (error) {
+      console.error('Failed to initialize vector store:', error);
     }
   };
 
-  const getStatusText = () => {
-    switch (indexStatus) {
-      case 'completed':
-        return 'Vector index is ready';
-      case 'error':
-        return 'Indexing failed';
-      case 'in_progress':
-        return 'Creating vector embeddings...';
-      default:
-        return 'Vector index not created';
-    }
+  const handleVectorizeData = async () => {
+    if (uploadedData.length === 0) return;
+    await vectorizeData(uploadedData);
   };
 
   return (
@@ -67,134 +48,129 @@ export const VectorStoreTab = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5" />
-            Vector Store Status
+            Vector Store Management
           </CardTitle>
           <CardDescription>
-            Monitor and manage your local vector embeddings for semantic search
+            Convert your clinical data into searchable vector embeddings using local browser-based models
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 p-4 border rounded-lg">
-            {getStatusIcon()}
-            <div className="flex-1">
-              <p className="font-medium">{getStatusText()}</p>
-              {indexStatus === 'in_progress' && (
-                <div className="mt-2">
-                  <Progress value={indexingProgress} className="w-full" />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {indexingProgress}% complete
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <h4 className="font-medium">Embedding Model Status</h4>
+              <p className="text-sm text-muted-foreground">
+                Using Xenova/all-MiniLM-L6-v2 (runs in browser)
+              </p>
+            </div>
+            <Button onClick={handleInitialize} variant="outline">
+              <Zap className="h-4 w-4 mr-2" />
+              Initialize Model
+            </Button>
+          </div>
+
+          {uploadedData.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                <div>
+                  <h4 className="font-medium">Data Ready for Vectorization</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {uploadedData.length} clinical records loaded
                   </p>
+                </div>
+                <Button 
+                  onClick={handleVectorizeData}
+                  disabled={isVectorizing || uploadedData.length === 0}
+                >
+                  {isVectorizing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="h-4 w-4 mr-2" />
+                      Vectorize Data
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {isVectorizing && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Vectorization Progress</span>
+                    <span>{Math.round(vectorizationProgress)}%</span>
+                  </div>
+                  <Progress value={vectorizationProgress} className="w-full" />
+                </div>
+              )}
+
+              {isVectorStoreReady && (
+                <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <div className="flex-1">
+                    <p className="font-medium text-green-800">Vector Store Ready</p>
+                    <p className="text-sm text-green-700">
+                      {vectorizedCount} records vectorized and ready for search
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={clearVectorStore}>
+                    Clear Store
+                  </Button>
                 </div>
               )}
             </div>
-          </div>
-
-          {indexStatus === 'not_started' && (
-            <Button onClick={startIndexing} disabled={isIndexing} className="w-full">
-              <Play className="mr-2 h-4 w-4" />
-              Start Vector Indexing
-            </Button>
           )}
 
-          {indexStatus === 'completed' && (
-            <Button onClick={startIndexing} variant="outline" className="w-full">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Re-index Documents
-            </Button>
+          {uploadedData.length === 0 && (
+            <div className="flex items-center gap-2 p-4 bg-yellow-50 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-yellow-600" />
+              <p className="text-yellow-800">
+                No data uploaded. Please upload MIMIC IV data first.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Embedding Configuration</CardTitle>
+          <CardTitle>How Vector Search Works</CardTitle>
           <CardDescription>
-            Current settings for your local embedding model
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-3 border rounded-lg">
-              <p className="text-sm font-medium">Model</p>
-              <p className="text-sm text-muted-foreground">nomic-embed-text</p>
-            </div>
-            <div className="p-3 border rounded-lg">
-              <p className="text-sm font-medium">Provider</p>
-              <p className="text-sm text-muted-foreground">Ollama (Local)</p>
-            </div>
-            <div className="p-3 border rounded-lg">
-              <p className="text-sm font-medium">Dimensions</p>
-              <p className="text-sm text-muted-foreground">768</p>
-            </div>
-            <div className="p-3 border rounded-lg">
-              <p className="text-sm font-medium">Chunk Size</p>
-              <p className="text-sm text-muted-foreground">512 tokens</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Vector Store Statistics</CardTitle>
-          <CardDescription>
-            Overview of your indexed clinical documents
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-2xl font-bold text-primary">1,247</p>
-              <p className="text-sm text-muted-foreground">Total Documents</p>
-            </div>
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-2xl font-bold text-primary">8,529</p>
-              <p className="text-sm text-muted-foreground">Text Chunks</p>
-            </div>
-            <div className="text-center p-4 border rounded-lg">
-              <p className="text-2xl font-bold text-primary">156</p>
-              <p className="text-sm text-muted-foreground">Unique Patients</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Local Processing Pipeline</CardTitle>
-          <CardDescription>
-            How your clinical data is processed locally
+            Understanding the local vector search implementation
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium">1</div>
-              <div>
-                <p className="font-medium">Text Preprocessing</p>
-                <p className="text-sm text-muted-foreground">Clean and normalize clinical notes</p>
-              </div>
+            <div className="space-y-3">
+              <h4 className="font-medium">1. Text Embedding</h4>
+              <p className="text-sm text-muted-foreground">
+                Each clinical note is converted into a high-dimensional vector using the all-MiniLM-L6-v2 model, which runs entirely in your browser.
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium">2</div>
-              <div>
-                <p className="font-medium">Chunking</p>
-                <p className="text-sm text-muted-foreground">Split documents into semantic chunks</p>
-              </div>
+
+            <div className="space-y-3">
+              <h4 className="font-medium">2. Similarity Search</h4>
+              <p className="text-sm text-muted-foreground">
+                When you ask a question, it's also converted to a vector and compared against all stored vectors using cosine similarity.
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium">3</div>
-              <div>
-                <p className="font-medium">Embedding Generation</p>
-                <p className="text-sm text-muted-foreground">Create vector embeddings using Nomic model</p>
-              </div>
+
+            <div className="space-y-3">
+              <h4 className="font-medium">3. Context Retrieval</h4>
+              <p className="text-sm text-muted-foreground">
+                The most similar clinical notes are retrieved and used as context for generating relevant responses about your data.
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium">4</div>
-              <div>
-                <p className="font-medium">Vector Storage</p>
-                <p className="text-sm text-muted-foreground">Store embeddings in local FAISS index</p>
-              </div>
+
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-medium text-green-800 mb-2">Privacy Benefits</h4>
+              <ul className="text-sm text-green-700 space-y-1">
+                <li>• All processing happens locally in your browser</li>
+                <li>• No data sent to external servers</li>
+                <li>• Embeddings stored in browser memory only</li>
+                <li>• HIPAA compliant by design</li>
+              </ul>
             </div>
           </div>
         </CardContent>

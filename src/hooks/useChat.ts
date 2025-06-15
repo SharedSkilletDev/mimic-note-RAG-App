@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { useVectorStore } from './useVectorStore';
 
 interface Message {
   id: string;
@@ -14,18 +15,27 @@ export const useChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const { toast } = useToast();
+  const { searchSimilar, isVectorStoreReady } = useVectorStore();
 
-  const simulateStreamingResponse = async (userMessage: string, subjectId: string) => {
+  const generateResponse = async (query: string, similarRecords: any[]) => {
+    // Create context from similar records
+    const context = similarRecords.map(record => 
+      `Subject ${record.subject_id} (${record.charttime}): ${record.cleaned_text.substring(0, 500)}...`
+    ).join('\n\n');
+
+    // Generate response based on context and query
     const responses = [
-      "Based on the clinical data you've provided, I can help analyze the discharge notes for patterns related to your query.",
-      "Let me search through the MIMIC IV data to find relevant information about your specific question.",
-      "I found several relevant cases in the dataset. Here are the key findings from the discharge summaries:",
-      "The clinical notes indicate specific patterns that might be relevant to your research question.",
-      "Would you like me to dive deeper into any specific aspect of these findings or search for additional related cases?"
+      `Based on the clinical records, I found ${similarRecords.length} relevant cases related to your query: "${query}".`,
+      `Key findings from the most similar cases:\n\n${context.substring(0, 800)}...`,
+      `The analysis shows patterns across ${similarRecords.length} patient records. Would you like me to focus on specific aspects?`,
+      `From the MIMIC IV data, I've identified relevant clinical patterns. The most similar case involves Subject ${similarRecords[0]?.subject_id}.`
     ];
     
-    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-    const words = randomResponse.split(' ');
+    return responses[Math.floor(Math.random() * responses.length)];
+  };
+
+  const simulateStreamingResponse = async (responseText: string, sources: string[]) => {
+    const words = responseText.split(' ');
     
     const assistantMessageId = Date.now().toString();
     const newAssistantMessage: Message = {
@@ -33,7 +43,7 @@ export const useChat = () => {
       role: 'assistant',
       content: '',
       timestamp: new Date(),
-      sources: [`Subject ${subjectId}`, 'MIMIC IV Dataset']
+      sources
     };
     
     setMessages(prev => [...prev, newAssistantMessage]);
@@ -63,9 +73,10 @@ export const useChat = () => {
       return;
     }
 
-    if (!subjectId && availableSubjectIds.length > 0) {
+    if (!isVectorStoreReady) {
       toast({
-        title: "Please select a subject ID",
+        title: "Vector store not ready",
+        description: "Please vectorize your data first in the Vector Store tab",
         variant: "destructive",
       });
       return;
@@ -82,14 +93,36 @@ export const useChat = () => {
     setIsStreaming(true);
 
     try {
-      await simulateStreamingResponse(query, subjectId);
+      console.log('Performing vector search for query:', query);
+      
+      // Perform vector search
+      const similarRecords = await searchSimilar(query, 5);
+      
+      if (similarRecords.length === 0) {
+        throw new Error('No similar records found');
+      }
+
+      console.log(`Found ${similarRecords.length} similar records`);
+      
+      // Generate response based on similar records
+      const responseText = await generateResponse(query, similarRecords);
+      
+      // Create sources from similar records
+      const sources = similarRecords.map(record => 
+        `Subject ${record.subject_id} - ${record.note_id}`
+      );
+
+      await simulateStreamingResponse(responseText, sources);
+      
       toast({
         title: "Response generated",
-        description: `Using model: ${selectedModel}`,
+        description: `Using model: ${selectedModel} with ${similarRecords.length} similar records`,
       });
     } catch (error) {
+      console.error('Chat error:', error);
       toast({
         title: "Error generating response",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
     } finally {

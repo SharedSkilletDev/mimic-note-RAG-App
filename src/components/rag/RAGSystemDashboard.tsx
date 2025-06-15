@@ -85,7 +85,7 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
         </TabsContent>
 
         <TabsContent value="vector" className="mt-6">
-          <VectorStoreTab />
+          <VectorStoreTab uploadedData={uploadedData} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
