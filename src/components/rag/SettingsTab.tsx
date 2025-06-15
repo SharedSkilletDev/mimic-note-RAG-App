@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,8 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 export const SettingsTab = () => {
   const [settings, setSettings] = useState({
     ollamaUrl: 'http://localhost:11434',
-    embeddingModel: 'nomic-embed-text',
-    llmModel: 'llama3.1',
+    embeddingModel: 'nomic-embed-text:latest',
+    llmModel: 'llama3.2:latest',
     chunkSize: 512,
     chunkOverlap: 50,
     topK: 5,
@@ -22,6 +21,16 @@ export const SettingsTab = () => {
   });
 
   const { toast } = useToast();
+
+  // Available models from your Ollama instance
+  const embeddingModels = ['nomic-embed-text:latest'];
+  const llmModels = [
+    'llama3.2:latest',
+    'llama3.1:8b', 
+    'mistral:latest',
+    'summarizer:latest',
+    'gemma'
+  ];
 
   const handleSave = () => {
     toast({
@@ -80,12 +89,17 @@ export const SettingsTab = () => {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nomic-embed-text">nomic-embed-text</SelectItem>
-                  <SelectItem value="mxbai-embed-large">mxbai-embed-large</SelectItem>
-                  <SelectItem value="all-minilm">all-minilm</SelectItem>
+                <SelectContent className="bg-white z-50">
+                  {embeddingModels.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Used for converting text to vector embeddings
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -94,13 +108,17 @@ export const SettingsTab = () => {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="llama3.1">llama3.1</SelectItem>
-                  <SelectItem value="llama3">llama3</SelectItem>
-                  <SelectItem value="mistral">mistral</SelectItem>
-                  <SelectItem value="codellama">codellama</SelectItem>
+                <SelectContent className="bg-white z-50">
+                  {llmModels.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Used for generating responses and analysis
+              </p>
             </div>
           </div>
         </CardContent>
