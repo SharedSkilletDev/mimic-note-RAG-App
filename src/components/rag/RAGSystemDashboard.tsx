@@ -46,7 +46,7 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
                   />
                 </div>
               </div>
-              <div className="text-center lg:text-left flex-1">
+              <div className="text-center flex-1">
                 <div className="mb-3">
                   <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
                     Local RAG System for MIMIC IV Data
@@ -57,7 +57,7 @@ export const RAGSystemDashboard = ({ activeTab: externalActiveTab, onTabChange }
                     University of Arkansas for Medical Sciences
                   </p>
                 </div>
-                <div className="max-w-2xl">
+                <div className="max-w-2xl mx-auto">
                   <p className="text-gray-600 leading-relaxed">
                     Build and query your local RAG system with clinical discharge notes while maintaining HIPAA compliance and ensuring data privacy
                   </p>
