@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Clock, User, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,7 +17,19 @@ interface QueryResult {
   full_text: string;
 }
 
-export const QueryTab = () => {
+interface MimicRecord {
+  note_id: string;
+  subject_id: number;
+  hadm_id: number;
+  charttime: string;
+  cleaned_text: string;
+}
+
+interface QueryTabProps {
+  uploadedData?: MimicRecord[];
+}
+
+export const QueryTab = ({ uploadedData = [] }: QueryTabProps) => {
   const [query, setQuery] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [dateRange, setDateRange] = useState('');
@@ -24,10 +37,24 @@ export const QueryTab = () => {
   const [isSearching, setIsSearching] = useState(false);
   const { toast } = useToast();
 
+  // Get unique subject IDs from uploaded data
+  const availableSubjectIds = React.useMemo(() => {
+    const uniqueIds = [...new Set(uploadedData.map(record => record.subject_id))];
+    return uniqueIds.sort((a, b) => a - b);
+  }, [uploadedData]);
+
   const handleSearch = async () => {
     if (!query.trim()) {
       toast({
         title: "Please enter a search query",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!subjectId) {
+      toast({
+        title: "Please select a subject ID",
         variant: "destructive",
       });
       return;
@@ -39,16 +66,16 @@ export const QueryTab = () => {
     setTimeout(() => {
       const mockResults: QueryResult[] = [
         {
-          note_id: "12103604-DS-13",
-          subject_id: 12103604,
+          note_id: `${subjectId}-DS-13`,
+          subject_id: parseInt(subjectId),
           charttime: "2183-04-05",
           relevance_score: 0.92,
           snippet: "Chief Complaint: Chest pain with exertion. Cardiac Catheterization showed 70% stenosis in the distal left main...",
           full_text: "Complete discharge note would be here..."
         },
         {
-          note_id: "12103604-DS-12",
-          subject_id: 12103604,
+          note_id: `${subjectId}-DS-12`,
+          subject_id: parseInt(subjectId),
           charttime: "2183-04-03",
           relevance_score: 0.87,
           snippet: "Patient presented with chest pain and shortness of breath. EKG showed ST changes...",
@@ -61,7 +88,7 @@ export const QueryTab = () => {
       
       toast({
         title: "Search completed",
-        description: `Found ${mockResults.length} relevant documents`,
+        description: `Found ${mockResults.length} relevant documents for Subject ${subjectId}`,
       });
     }, 2000);
   };
@@ -93,13 +120,26 @@ export const QueryTab = () => {
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-1">
                 <User className="h-4 w-4" />
-                Subject ID (optional)
+                Subject ID *
               </label>
-              <Input
-                placeholder="e.g., 12103604"
-                value={subjectId}
-                onChange={(e) => setSubjectId(e.target.value)}
-              />
+              {availableSubjectIds.length > 0 ? (
+                <Select value={subjectId} onValueChange={setSubjectId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a subject ID" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-50">
+                    {availableSubjectIds.map((id) => (
+                      <SelectItem key={id} value={id.toString()}>
+                        {id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="p-2 text-sm text-muted-foreground border rounded">
+                  No data uploaded. Please upload MIMIC IV data first.
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -117,7 +157,7 @@ export const QueryTab = () => {
 
           <Button 
             onClick={handleSearch} 
-            disabled={isSearching}
+            disabled={isSearching || !query.trim() || !subjectId}
             className="w-full"
           >
             {isSearching ? (
@@ -140,7 +180,7 @@ export const QueryTab = () => {
           <CardHeader>
             <CardTitle>Search Results</CardTitle>
             <CardDescription>
-              Found {results.length} relevant clinical notes
+              Found {results.length} relevant clinical notes for Subject {subjectId}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

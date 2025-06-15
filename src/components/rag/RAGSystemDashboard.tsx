@@ -6,8 +6,17 @@ import { QueryTab } from "./QueryTab";
 import { VectorStoreTab } from "./VectorStoreTab";
 import { SettingsTab } from "./SettingsTab";
 
+interface MimicRecord {
+  note_id: string;
+  subject_id: number;
+  hadm_id: number;
+  charttime: string;
+  cleaned_text: string;
+}
+
 export const RAGSystemDashboard = () => {
   const [activeTab, setActiveTab] = useState("upload");
+  const [uploadedData, setUploadedData] = useState<MimicRecord[]>([]);
 
   return (
     <div className="flex-1 p-6">
@@ -27,11 +36,11 @@ export const RAGSystemDashboard = () => {
         </TabsList>
 
         <TabsContent value="upload" className="mt-6">
-          <DataUploadTab />
+          <DataUploadTab onDataUploaded={setUploadedData} />
         </TabsContent>
 
         <TabsContent value="query" className="mt-6">
-          <QueryTab />
+          <QueryTab uploadedData={uploadedData} />
         </TabsContent>
 
         <TabsContent value="vector" className="mt-6">

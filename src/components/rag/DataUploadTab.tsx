@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,11 @@ interface MimicRecord {
   cleaned_text: string;
 }
 
-export const DataUploadTab = () => {
+interface DataUploadTabProps {
+  onDataUploaded: (data: MimicRecord[]) => void;
+}
+
+export const DataUploadTab = ({ onDataUploaded }: DataUploadTabProps) => {
   const [uploadedData, setUploadedData] = useState<MimicRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -35,6 +38,7 @@ export const DataUploadTab = () => {
       }
 
       setUploadedData(data);
+      onDataUploaded(data);
       toast({
         title: "Data uploaded successfully",
         description: `Loaded ${data.length} clinical records`,
