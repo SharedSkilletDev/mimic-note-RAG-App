@@ -1,4 +1,5 @@
 
+import { useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useChatMessages } from './useChatMessages';
 import { useChatStreaming } from './useChatStreaming';
@@ -8,30 +9,36 @@ import { useChatAPI } from './useChatAPI';
 export const useChat = () => {
   const { toast } = useToast();
 
+  const chatMessages = useChatMessages();
+  const chatStreaming = useChatStreaming();
+  const fallbackGenerator = useFallbackGenerator();
+  const chatAPI = useChatAPI();
+
+  // Destructure after all hooks are initialized
   const {
     messages,
     setMessages,
     addUserMessage,
     removeUserMessage,
     clearMessages
-  } = useChatMessages();
+  } = chatMessages;
 
   const {
     isStreaming,
     setIsStreaming,
     simulateStreamingResponse
-  } = useChatStreaming();
+  } = chatStreaming;
 
-  const { generateEnhancedFallback } = useFallbackGenerator();
+  const { generateEnhancedFallback } = fallbackGenerator;
 
   const {
     performVectorSearch,
     generateLLMResponse,
     validateConnectionState,
     createSourceReferences
-  } = useChatAPI();
+  } = chatAPI;
 
-  const sendMessage = async (
+  const sendMessage = useCallback(async (
     query: string, 
     subjectId: string, 
     availableSubjectIds: number[], 
@@ -102,14 +109,26 @@ export const useChat = () => {
     } finally {
       setIsStreaming(false);
     }
-  };
+  }, [
+    toast,
+    validateConnectionState,
+    addUserMessage,
+    setIsStreaming,
+    performVectorSearch,
+    createSourceReferences,
+    generateLLMResponse,
+    simulateStreamingResponse,
+    setMessages,
+    generateEnhancedFallback,
+    removeUserMessage
+  ]);
 
-  const clearConversation = () => {
+  const clearConversation = useCallback(() => {
     clearMessages();
     toast({
       title: "Conversation cleared",
     });
-  };
+  }, [clearMessages, toast]);
 
   return {
     messages,
