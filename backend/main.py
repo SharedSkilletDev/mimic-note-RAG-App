@@ -124,7 +124,7 @@ async def health_check():
 
 @app.post("/vectorize")
 async def vectorize_data(request: VectorizeRequest):
-    """Vectorize clinical records with streaming progress"""
+    """Vectorize clinical records with streaming progress and better error handling"""
     try:
         if not embedding_service or not vector_store:
             raise HTTPException(status_code=500, detail="Services not initialized")
@@ -134,7 +134,12 @@ async def vectorize_data(request: VectorizeRequest):
         async def generate_progress():
             total_records = len(request.records)
             vectorized_count = 0
+<<<<<<< HEAD
             errors = []
+=======
+            failed_count = 0
+            metal_error_detected = False
+>>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
             
             for i, record in enumerate(request.records):
                 try:
@@ -162,6 +167,7 @@ async def vectorize_data(request: VectorizeRequest):
                         "progress": progress, 
                         "processed": i + 1, 
                         "total": total_records,
+<<<<<<< HEAD
                         "status": "processing"
                     }
                     yield f"data: {json.dumps(progress_data)}\n\n"
@@ -170,11 +176,15 @@ async def vectorize_data(request: VectorizeRequest):
                     if vectorized_count % 100 == 0:
                         vector_store.save_index()
                         logger.info(f"Saved index at {vectorized_count} records")
-                    
-                    # Add small delay to prevent overwhelming
-                    await asyncio.sleep(0.01)
+=======
+                        "successful": vectorized_count,
+                        "failed": failed_count
+                    }
+                    yield f"{json.dumps(progress_data)}\n"
+>>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
                     
                 except Exception as e:
+<<<<<<< HEAD
                     error_msg = f"Error processing record {record.note_id}: {str(e)}"
                     logger.error(error_msg)
                     errors.append(error_msg)
@@ -196,6 +206,46 @@ async def vectorize_data(request: VectorizeRequest):
                 "status": "completed"
             }
             yield f"data: {json.dumps(result)}\n\n"
+=======
+                    failed_count += 1
+                    error_msg = str(e)
+                    
+                    # Check for Metal backend errors
+                    if "failed to create command queue" in error_msg or "llama runner process has terminated" in error_msg:
+                        metal_error_detected = True
+                        logger.error(f"Metal backend error detected for record {record.note_id}: {e}")
+                    else:
+                        logger.error(f"Error processing record {record.note_id}: {e}")
+                    
+                    # Send error update
+                    error_data = {
+                        "progress": int((i + 1) / total_records * 100),
+                        "processed": i + 1,
+                        "total": total_records,
+                        "successful": vectorized_count,
+                        "failed": failed_count,
+                        "error": "Metal backend issues detected" if metal_error_detected else "Processing error"
+                    }
+                    yield f"{json.dumps(error_data)}\n"
+                    continue
+            
+            # Send final result with troubleshooting info
+            success_rate = (vectorized_count / total_records * 100) if total_records > 0 else 0
+            message = f"Successfully vectorized {vectorized_count} out of {total_records} records ({success_rate:.1f}%)"
+            
+            if metal_error_detected:
+                message += "\n\nIMPORTANT: Metal backend errors detected. To fix this:\n1. Stop Ollama: 'ollama stop'\n2. Restart with CPU mode: 'OLLAMA_NUM_GPU=0 ollama serve'\n3. Or increase available GPU memory"
+            
+            if failed_count > 0:
+                message += f"\n{failed_count} records failed to process."
+            
+            result = VectorizeResponse(
+                success=vectorized_count > 0,
+                message=message,
+                vectorized_count=vectorized_count
+            )
+            yield json.dumps(result.dict())
+>>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
         
         return StreamingResponse(
             generate_progress(),
@@ -208,7 +258,10 @@ async def vectorize_data(request: VectorizeRequest):
         
     except Exception as e:
         logger.error(f"Vectorization failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Vectorization failed: {str(e)}")
+        error_message = str(e)
+        if "Metal backend" in error_message or "failed to create command queue" in error_message:
+            error_message += " - Try restarting Ollama with: OLLAMA_NUM_GPU=0 ollama serve"
+        raise HTTPException(status_code=500, detail=f"Vectorization failed: {error_message}")
 
 @app.get("/search", response_model=SearchResponse)
 async def search_similar(
@@ -254,7 +307,12 @@ async def search_similar(
         raise
     except Exception as e:
         logger.error(f"Search failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        error_message = str(e)
+        if "Metal backend" in error_message or "failed to create command queue" in error_message:
+            error_message += " - Try restarting Ollama with: OLLAMA_NUM_GPU=0 ollama serve"
+        raise HTTPException(status_code=500, detail=f"Search failed: {error_message}")
+
+# ... keep existing code (stats, clear, and main endpoints)
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats():
