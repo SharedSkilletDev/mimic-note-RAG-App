@@ -1,7 +1,6 @@
-
 import { useState, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { backendVectorService } from '@/services/backendVectorService';
+import { backendVectorService } from '@/services/backend';
 
 interface MimicRecord {
   note_id: string;
