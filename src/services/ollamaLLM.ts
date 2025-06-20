@@ -69,6 +69,7 @@ Please provide a comprehensive, structured clinical analysis of these records in
 
     try {
       console.log('🤖 OllamaLLM: Sending request to Ollama API...');
+      console.log('🤖 OllamaLLM: URL:', `${this.baseUrl}/api/chat`);
       
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
@@ -127,7 +128,8 @@ Please provide a comprehensive, structured clinical analysis of these records in
       console.error('❌ OllamaLLM: Generation failed:', error);
       
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to Ollama service - ensure it is running at ' + this.baseUrl);
+        console.error('❌ OllamaLLM: Network error - this is likely a CORS issue or Ollama is not running');
+        throw new Error('Cannot connect to Ollama service - ensure it is running at ' + this.baseUrl + ' and CORS is configured');
       }
       
       throw new Error(`Failed to generate LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -137,20 +139,44 @@ Please provide a comprehensive, structured clinical analysis of these records in
   async checkConnection(): Promise<boolean> {
     try {
       console.log('🔌 OllamaLLM: Checking connection to', this.baseUrl);
+      console.log('🔌 OllamaLLM: Attempting to fetch /api/tags endpoint...');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
       const response = await fetch(`${this.baseUrl}/api/tags`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       const isConnected = response.ok;
       console.log('🔌 OllamaLLM: Connection result:', isConnected);
+      console.log('🔌 OllamaLLM: Response status:', response.status);
+      
+      if (!isConnected) {
+        console.error('🔌 OllamaLLM: Connection failed with status:', response.status);
+        console.error('🔌 OllamaLLM: Response text:', await response.text().catch(() => 'Could not read response'));
+      }
       
       return isConnected;
     } catch (error) {
       console.error('🔌 OllamaLLM: Connection check failed:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.error('🔌 OllamaLLM: Connection timeout - Ollama may be slow or not responding');
+        } else if (error.message.includes('Failed to fetch')) {
+          console.error('🔌 OllamaLLM: Network error - likely CORS issue or Ollama not running');
+          console.error('🔌 OllamaLLM: Make sure Ollama is running with: ollama serve');
+          console.error('🔌 OllamaLLM: And configure CORS if needed');
+        }
+      }
+      
       return false;
     }
   }
