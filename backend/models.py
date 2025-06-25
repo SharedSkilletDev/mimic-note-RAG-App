@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -41,3 +40,13 @@ class StatsResponse(BaseModel):
 class ClearResponse(BaseModel):
     success: bool
     message: str
+
+class LLMRequest(BaseModel):
+    query: str
+    context_records: List[dict]
+    model: Optional[str] = None
+
+class LLMResponse(BaseModel):
+    success: bool
+    response: str
+    model_used: str

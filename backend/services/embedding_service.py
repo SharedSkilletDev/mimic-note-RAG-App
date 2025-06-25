@@ -2,7 +2,7 @@ import asyncio
 import logging
 import numpy as np
 from typing import List, Optional
-import aiohttp
+import httpx
 import json
 import time
 
@@ -11,94 +11,44 @@ logger = logging.getLogger(__name__)
 class EmbeddingService:
     def __init__(self, 
                  ollama_url: str = "http://localhost:11434",
-                 model_name: str = "nomic-embed-text"):
+                 model_name: str = "nomic-embed-text:latest"):
         self.ollama_url = ollama_url
-<<<<<<< HEAD
         self.model_name = model_name
-        self.session = None
-        
-    async def _get_session(self):
-        """Get or create aiohttp session"""
-        if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=300)  # 5 minutes timeout
-            self.session = aiohttp.ClientSession(timeout=timeout)
-        return self.session
-=======
-        self.model_name = "nomic-embed-text:latest"
         self.embedding_dimension = 768  # Nomic embedding dimension
         self.max_retries = 3
         self.retry_delay = 2  # seconds
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
     
     async def check_ollama_connection(self) -> bool:
         """Check if Ollama is running and accessible"""
         try:
-            session = await self._get_session()
-            async with session.get(f"{self.ollama_url}/api/tags") as response:
-                if response.status == 200:
-                    data = await response.json()
+            logger.info(f"Checking Ollama connection at {self.ollama_url}")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self.ollama_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
                     # Check if embedding model is available
                     models = [model.get('name', '') for model in data.get('models', [])]
-                    if any(self.model_name in model for model in models):
-                        logger.info(f"Ollama is running with {self.model_name} model")
-                        return True
-                    else:
-                        logger.warning(f"Ollama is running but {self.model_name} model not found")
-                        logger.info(f"Available models: {models}")
-                        return False
+                    logger.info(f"Available models: {models}")
+                    
+                    # Check for nomic embedding model
+                    model_found = any(self.model_name in model for model in models)
+                    if not model_found:
+                        logger.warning(f"Model {self.model_name} not found. Attempting to pull...")
+                        await self._pull_model()
+                        return await self.check_ollama_connection()  # Recheck after pull
+                    
+                    logger.info(f"Ollama is running with {self.model_name} model")
+                    return True
                 else:
-                    logger.error(f"Ollama responded with status {response.status}")
+                    logger.error(f"Ollama responded with status {response.status_code}")
                     return False
         except Exception as e:
             logger.error(f"Failed to connect to Ollama: {e}")
             return False
     
-    async def get_embedding(self, text: str) -> List[float]:
-        """Generate embedding for given text"""
+    async def _pull_model(self):
+        """Pull the embedding model if not available"""
         try:
-<<<<<<< HEAD
-            if not text or not text.strip():
-                raise ValueError("Text cannot be empty")
-                
-            session = await self._get_session()
-            
-            payload = {
-                "model": self.model_name,
-                "prompt": text.strip()
-            }
-            
-            async with session.post(
-                f"{self.ollama_url}/api/embeddings",
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                
-                if response.status != 200:
-                    error_text = await response.text()
-                    logger.error(f"Ollama API error {response.status}: {error_text}")
-                    raise Exception(f"Ollama API error: {response.status}")
-                
-                data = await response.json()
-                
-                if "embedding" not in data:
-                    logger.error(f"No embedding in response: {data}")
-                    raise Exception("No embedding returned from Ollama")
-                
-                embedding = data["embedding"]
-                
-                if not isinstance(embedding, list) or len(embedding) == 0:
-                    raise Exception("Invalid embedding format received")
-                
-                logger.debug(f"Generated embedding of dimension {len(embedding)}")
-                return embedding
-                
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {e}")
-            raise Exception(f"Embedding generation failed: {str(e)}")
-    
-    async def get_embeddings_batch(self, texts: List[str], batch_size: int = 10) -> List[List[float]]:
-        """Generate embeddings for multiple texts in batches"""
-=======
             logger.info(f"Attempting to pull model: {self.model_name}")
             async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
@@ -191,7 +141,6 @@ class EmbeddingService:
     
     async def get_embeddings_batch(self, texts: List[str], batch_size: int = 5) -> List[np.ndarray]:
         """Generate embeddings for multiple texts in batches with reduced batch size for stability"""
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
         embeddings = []
         failed_count = 0
         
@@ -203,17 +152,6 @@ class EmbeddingService:
                 try:
                     embedding = await self.get_embedding(text)
                     batch_embeddings.append(embedding)
-<<<<<<< HEAD
-                except Exception as e:
-                    logger.error(f"Failed to embed text: {text[:100]}... Error: {e}")
-                    # Use zero vector as fallback
-                    batch_embeddings.append([0.0] * 768)  # Adjust dimension as needed
-            
-            embeddings.extend(batch_embeddings)
-            
-            # Small delay to avoid overwhelming Ollama
-            await asyncio.sleep(0.1)
-=======
                     # Longer delay to prevent overwhelming Ollama
                     await asyncio.sleep(0.5)
                 except Exception as e:
@@ -227,24 +165,10 @@ class EmbeddingService:
             # Longer delay between batches to give Ollama time to recover
             if i + batch_size < len(texts):
                 await asyncio.sleep(1.0)
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
         
         logger.info(f"Batch processing complete. Total successful: {len(embeddings)}, Total failed: {failed_count}")
         return embeddings
     
     async def close(self):
-        """Close the aiohttp session"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-    
-    def __del__(self):
-        """Cleanup on deletion"""
-        if hasattr(self, 'session') and self.session and not self.session.closed:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self.session.close())
-                else:
-                    loop.run_until_complete(self.session.close())
-            except:
-                pass
+        """Close any resources"""
+        pass

@@ -134,12 +134,8 @@ async def vectorize_data(request: VectorizeRequest):
         async def generate_progress():
             total_records = len(request.records)
             vectorized_count = 0
-<<<<<<< HEAD
-            errors = []
-=======
             failed_count = 0
             metal_error_detected = False
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
             
             for i, record in enumerate(request.records):
                 try:
@@ -167,46 +163,17 @@ async def vectorize_data(request: VectorizeRequest):
                         "progress": progress, 
                         "processed": i + 1, 
                         "total": total_records,
-<<<<<<< HEAD
-                        "status": "processing"
+                        "successful": vectorized_count,
+                        "failed": failed_count
                     }
-                    yield f"data: {json.dumps(progress_data)}\n\n"
+                    yield f"{json.dumps(progress_data)}\n"
                     
                     # Save index periodically
                     if vectorized_count % 100 == 0:
                         vector_store.save_index()
                         logger.info(f"Saved index at {vectorized_count} records")
-=======
-                        "successful": vectorized_count,
-                        "failed": failed_count
-                    }
-                    yield f"{json.dumps(progress_data)}\n"
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
                     
                 except Exception as e:
-<<<<<<< HEAD
-                    error_msg = f"Error processing record {record.note_id}: {str(e)}"
-                    logger.error(error_msg)
-                    errors.append(error_msg)
-                    continue
-            
-            # Save final index
-            try:
-                vector_store.save_index()
-                logger.info("Final index save completed")
-            except Exception as e:
-                logger.error(f"Failed to save final index: {e}")
-            
-            # Send final result
-            result = {
-                "success": True,
-                "message": f"Successfully vectorized {vectorized_count} out of {total_records} records",
-                "vectorized_count": vectorized_count,
-                "errors": errors[:10] if errors else [],  # Limit error messages
-                "status": "completed"
-            }
-            yield f"data: {json.dumps(result)}\n\n"
-=======
                     failed_count += 1
                     error_msg = str(e)
                     
@@ -229,6 +196,13 @@ async def vectorize_data(request: VectorizeRequest):
                     yield f"{json.dumps(error_data)}\n"
                     continue
             
+            # Save final index
+            try:
+                vector_store.save_index()
+                logger.info("Final index save completed")
+            except Exception as e:
+                logger.error(f"Failed to save final index: {e}")
+            
             # Send final result with troubleshooting info
             success_rate = (vectorized_count / total_records * 100) if total_records > 0 else 0
             message = f"Successfully vectorized {vectorized_count} out of {total_records} records ({success_rate:.1f}%)"
@@ -245,7 +219,6 @@ async def vectorize_data(request: VectorizeRequest):
                 vectorized_count=vectorized_count
             )
             yield json.dumps(result.dict())
->>>>>>> 97a5500787bf8f80ca591fee09b62a2d4b9db0b0
         
         return StreamingResponse(
             generate_progress(),
@@ -311,8 +284,6 @@ async def search_similar(
         if "Metal backend" in error_message or "failed to create command queue" in error_message:
             error_message += " - Try restarting Ollama with: OLLAMA_NUM_GPU=0 ollama serve"
         raise HTTPException(status_code=500, detail=f"Search failed: {error_message}")
-
-# ... keep existing code (stats, clear, and main endpoints)
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats():
